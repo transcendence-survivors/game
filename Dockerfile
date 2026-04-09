@@ -5,7 +5,7 @@ WORKDIR /app
 RUN npm install -g pnpm
 RUN pnpm config set store-dir /pnpm/store
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json ./
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install
