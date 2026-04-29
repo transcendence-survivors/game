@@ -1,12 +1,10 @@
 import { Scene, Vector3 } from '@babylonjs/core';
 import { Monster } from './Monster';
 import type { MonsterBehavior } from './Monster';
-import type { TerrainGenerator } from '../world/TerrainGenerator';
-import type { HealthSystem } from '../systems/HealthSystem';
-import { Vec3 } from '../math/Vec3';
-import type { IVec3 } from '../math/Vec3';
-import type { DifficultyCurve } from '../difficulty/DifficultyCurve';
-import type { MonsterCatalog } from '../difficulty/MonsterCatalog';
+import { Vec3 } from '@transcendence/game-shared';
+import type {
+	IVec3, TerrainGenerator, HealthSystem, DifficultyCurve, MonsterCatalog,
+} from '@transcendence/game-shared';
 
 export interface MonsterSpawnerConfig {
 	minSpawnRadius: number;

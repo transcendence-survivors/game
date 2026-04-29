@@ -2,7 +2,7 @@ import {
 	AbstractMesh, ImportMeshAsync, Scene, TransformNode, Vector3,
 } from '@babylonjs/core';
 import '@babylonjs/loaders/OBJ';
-import { SwingAnimation } from '../combat/SwingAnimation';
+import { SwingAnimation } from '@transcendence/game-shared';
 
 export type GripAxis = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
 

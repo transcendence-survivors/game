@@ -2,7 +2,7 @@ import { Scene } from '@babylonjs/core';
 import {
 	AdvancedDynamicTexture, Button, Control, Rectangle, StackPanel, TextBlock,
 } from '@babylonjs/gui';
-import type { HealthSystem } from '../systems/HealthSystem';
+import type { HealthSystem } from '@transcendence/game-shared';
 
 export class HUD {
 	private readonly _ui: AdvancedDynamicTexture;

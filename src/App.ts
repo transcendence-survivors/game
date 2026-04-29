@@ -1,21 +1,19 @@
 import { Vector3 } from '@babylonjs/core';
 import { GameEngine } from './core/GameEngine';
-import { TerrainGenerator } from './world/TerrainGenerator';
 import { ChunkManager } from './world/ChunkManager';
 import { Player } from './entities/Player';
 import { MonsterSpawner } from './entities/MonsterSpawner';
 import { Sword } from './entities/Sword';
-import { HealthSystem } from './systems/HealthSystem';
 import { InputManager } from './systems/InputManager';
 import { HUD } from './ui/HUD';
-import { HitDetector } from './combat/HitDetector';
-import { Vec3 } from './math/Vec3';
-import { DifficultyCurve } from './difficulty/DifficultyCurve';
-import { MonsterCatalog } from './difficulty/MonsterCatalog';
-import type { MonsterType } from './difficulty/MonsterType';
+import {
+	TerrainGenerator, HealthSystem, HitDetector, Vec3,
+	DifficultyCurve, MonsterCatalog,
+} from '@transcendence/game-shared';
+import type { MonsterType } from '@transcendence/game-shared';
 import { NetworkClient } from './network/NetworkClient';
 
-const SERVER_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+const SERVER_URL = (import.meta.env.VITE_GAME_RT_URL as string | undefined) ?? 'ws://localhost:2567';
 
 const TILE_SIZE = 1;
 const PLAYER_MAX_HP = 100;

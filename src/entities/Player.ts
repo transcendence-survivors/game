@@ -2,7 +2,7 @@ import {
 	Color3, Mesh, MeshBuilder, Scene, StandardMaterial,
 	TransformNode, UniversalCamera, Vector3,
 } from '@babylonjs/core';
-import type { TerrainGenerator } from '../world/TerrainGenerator';
+import type { TerrainGenerator } from '@transcendence/game-shared';
 import type { InputManager } from '../systems/InputManager';
 
 export interface PlayerConfig {

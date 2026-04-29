@@ -1,14 +1,14 @@
 import {
 	Color3, Mesh, MeshBuilder, Quaternion, Scene, StandardMaterial, Vector3,
 } from '@babylonjs/core';
-import type { TerrainGenerator } from '../world/TerrainGenerator';
-import { HealthSystem } from '../systems/HealthSystem';
 import { MonsterHealthBar } from './MonsterHealthBar';
 import { MonsterFlashEffect } from './MonsterFlashEffect';
-import { MonsterAI } from './MonsterAI';
-import type { MonsterType } from '../difficulty/MonsterType';
-import { Vec3 } from '../math/Vec3';
-import type { IVec3 } from '../math/Vec3';
+import {
+	HealthSystem, MonsterAI, Vec3,
+} from '@transcendence/game-shared';
+import type {
+	IVec3, MonsterType, TerrainGenerator,
+} from '@transcendence/game-shared';
 
 export interface MonsterBehavior {
 	stoppingDistance: number;

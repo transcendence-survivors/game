@@ -22,6 +22,7 @@
 	"dependencies": {
 		"@babylonjs/gui": "^9.4.1",
 		"@babylonjs/loaders": "^9.4.1",
-		"socket.io-client": "^4.8.3"
+		"@transcendence/game-shared": "*",
+		"colyseus.js": "^0.16.0"
 	}
 }

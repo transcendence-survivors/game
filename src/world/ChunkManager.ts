@@ -1,7 +1,7 @@
 import {
 	Color3, Matrix, Mesh, MeshBuilder, Scene, StandardMaterial,
 } from '@babylonjs/core';
-import type { TerrainGenerator } from './TerrainGenerator';
+import type { TerrainGenerator } from '@transcendence/game-shared';
 
 export interface ChunkManagerConfig {
 	chunkSize: number;
