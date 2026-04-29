@@ -7,12 +7,20 @@
 		"dev": "vite",
 		"build": "tsc && vite build",
 		"preview": "vite preview",
-		"clean": "rm -rf dist"
+		"clean": "rm -rf dist",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"devDependencies": {
-		"@babylonjs/core": "^8.56.2",
-		"@babylonjs/inspector": "^8.56.2",
+		"@babylonjs/core": "^9.4.1",
+		"@babylonjs/inspector": "^9.4.1",
+		"@types/node": "^25.6.0",
 		"typescript": "~5.9.3",
-		"vite": "^8.0.1"
+		"vite": "^8.0.1",
+		"vitest": "^4.1.5"
+	},
+	"dependencies": {
+		"@babylonjs/gui": "^9.4.1",
+		"@babylonjs/loaders": "^9.4.1"
 	}
 }
