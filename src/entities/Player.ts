@@ -107,6 +107,7 @@ export class Player {
 		cam.parent = this._cameraRoot;
 		cam.minZ = 0.05;
 		cam.maxZ = 1000;
+		this._scene.activeCamera = cam;
 		return cam;
 	}
 

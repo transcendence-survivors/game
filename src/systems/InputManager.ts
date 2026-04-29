@@ -11,6 +11,7 @@ export class InputManager {
 	private readonly _attackHandlers: (() => void)[] = [];
 	private readonly _resizeHandlers: ResizeHandler[] = [];
 	private _enabled: boolean = true;
+	private _paused: boolean = false;
 
 	constructor(canvas: HTMLCanvasElement) {
 		this._canvas = canvas;
@@ -28,6 +29,11 @@ export class InputManager {
 	setEnabled(value: boolean): void {
 		this._enabled = value;
 		if (!value) for (const k of Object.keys(this._keys)) this._keys[k] = false;
+	}
+
+	setPaused(value: boolean): void {
+		this._paused = value;
+		for (const k of Object.keys(this._keys)) this._keys[k] = false;
 	}
 
 	onKeyDown(handler: KeyHandler): void {
@@ -65,7 +71,7 @@ export class InputManager {
 	private _attach(): void {
 		window.addEventListener('keydown', (ev) => {
 			if (!this._enabled) return;
-			this._keys[ev.code] = true;
+			if (!this._paused) this._keys[ev.code] = true;
 			this._keyDownHandlers.forEach(h => h(ev));
 		});
 
@@ -76,11 +82,13 @@ export class InputManager {
 
 		this._canvas.addEventListener('click', () => {
 			if (!this._enabled) return;
+			if (this._paused) return;
 			this._clickHandlers.forEach(h => h());
 		});
 
 		this._canvas.addEventListener('mousedown', (ev) => {
 			if (!this._enabled) return;
+			if (this._paused) return;
 			if (ev.button !== 0) return;
 			if (!this.hasPointerLock()) return;
 			this._attackHandlers.forEach(h => h());
@@ -90,6 +98,7 @@ export class InputManager {
 
 		this._canvas.addEventListener('mousemove', (ev) => {
 			if (!this._enabled) return;
+			if (this._paused) return;
 			if (!this.hasPointerLock()) return;
 			this._mouseMoveHandlers.forEach(h => h(ev.movementX || 0, ev.movementY || 0));
 		});

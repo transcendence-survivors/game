@@ -25,6 +25,32 @@ export class ChunkManager {
 		this._baseMaterial.specularColor = new Color3(0, 0, 0);
 	}
 
+	async preGenerate(
+		playerWorldX: number,
+		playerWorldZ: number,
+		viewDistance: number,
+		onChunkBuilt?: () => void,
+	): Promise<void> {
+		const tileSize = this._terrain.tileSize;
+		const playerGridX = Math.round(playerWorldX / tileSize);
+		const playerGridZ = Math.round(playerWorldZ / tileSize);
+		const currentChunkX = Math.floor(playerGridX / this._config.chunkSize);
+		const currentChunkZ = Math.floor(playerGridZ / this._config.chunkSize);
+
+		for (let x = -viewDistance; x <= viewDistance; x++) {
+			for (let z = -viewDistance; z <= viewDistance; z++) {
+				const cx = currentChunkX + x;
+				const cz = currentChunkZ + z;
+				const key = `${cx}_${cz}`;
+				if (!this._activeChunks.has(key)) {
+					this._buildChunk(cx, cz);
+					onChunkBuilt?.();
+					await new Promise(resolve => setTimeout(resolve, 0));
+				}
+			}
+		}
+	}
+
 	update(playerWorldX: number, playerWorldZ: number): void {
 		const tileSize = this._terrain.tileSize;
 		const playerGridX = Math.round(playerWorldX / tileSize);

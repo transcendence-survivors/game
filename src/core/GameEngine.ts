@@ -1,5 +1,5 @@
 import {
-	Engine, HemisphericLight, Scene, Vector3,
+	Engine, HemisphericLight, Scene, UniversalCamera, Vector3,
 } from '@babylonjs/core';
 import '@babylonjs/core/Debug/debugLayer';
 import '@babylonjs/inspector';
@@ -18,6 +18,9 @@ export class GameEngine {
 		this._scene = new Scene(this._engine);
 
 		new HemisphericLight('light1', new Vector3(1, 1, 0), this._scene);
+
+		const placeholderCam = new UniversalCamera('placeholderCam', new Vector3(0, 0, 0), this._scene);
+		this._scene.activeCamera = placeholderCam;
 	}
 
 	get canvas(): HTMLCanvasElement {

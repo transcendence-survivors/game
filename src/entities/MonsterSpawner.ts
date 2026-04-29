@@ -1,50 +1,44 @@
 import { Scene, Vector3 } from '@babylonjs/core';
 import { Monster } from './Monster';
+import type { MonsterBehavior } from './Monster';
 import type { TerrainGenerator } from '../world/TerrainGenerator';
-import { MonsterAI } from './MonsterAI';
 import type { HealthSystem } from '../systems/HealthSystem';
 import { Vec3 } from '../math/Vec3';
 import type { IVec3 } from '../math/Vec3';
+import type { DifficultyCurve } from '../difficulty/DifficultyCurve';
+import type { MonsterCatalog } from '../difficulty/MonsterCatalog';
 
 export interface MonsterSpawnerConfig {
-	maxCount: number;
-	spawnIntervalMs: number;
 	minSpawnRadius: number;
 	maxSpawnRadius: number;
-	width: number;
-	height: number;
-	radius: number;
-	speed: number;
-	damage: number;
-	maxHp: number;
-	attackRange: number;
-	attackCooldownMs: number;
-	stoppingDistance: number;
-	separationWeight: number;
 	flashDurationMs: number;
+	behavior: MonsterBehavior;
 }
 
 export class MonsterSpawner {
 	private readonly _scene: Scene;
 	private readonly _terrain: TerrainGenerator;
 	private readonly _config: MonsterSpawnerConfig;
-	private readonly _ai: MonsterAI;
+	private readonly _curve: DifficultyCurve;
+	private readonly _catalog: MonsterCatalog;
 	private readonly _monsters: Monster[] = [];
 
 	private _spawnTimer: number = 0;
 	private _nextId: number = 0;
+	private _maxAtCurrentTime: number = 0;
 
-	constructor(scene: Scene, terrain: TerrainGenerator, config: MonsterSpawnerConfig) {
+	constructor(
+		scene: Scene,
+		terrain: TerrainGenerator,
+		config: MonsterSpawnerConfig,
+		curve: DifficultyCurve,
+		catalog: MonsterCatalog,
+	) {
 		this._scene = scene;
 		this._terrain = terrain;
 		this._config = config;
-
-		this._ai = new MonsterAI({
-			attackRange: config.attackRange,
-			monsterRadius: config.radius,
-			separationWeight: config.separationWeight,
-			stoppingDistance: config.stoppingDistance,
-		});
+		this._curve = curve;
+		this._catalog = catalog;
 	}
 
 	get count(): number {
@@ -52,7 +46,7 @@ export class MonsterSpawner {
 	}
 
 	get max(): number {
-		return this._config.maxCount;
+		return this._maxAtCurrentTime;
 	}
 
 	get monsters(): readonly Monster[] {
@@ -70,19 +64,26 @@ export class MonsterSpawner {
 		}
 	}
 
-	update(deltaTimeMs: number, nowMs: number, playerPosition: Vector3, health: HealthSystem): void {
-		this._handleSpawn(deltaTimeMs, playerPosition);
+	update(deltaTimeMs: number, nowMs: number, elapsedMs: number, playerPosition: Vector3, health: HealthSystem): void {
+		this._maxAtCurrentTime = this._curve.maxMonstersAt(elapsedMs);
+		this._handleSpawn(deltaTimeMs, elapsedMs, playerPosition);
 		this._tickMonsters(nowMs);
 		this._handleMovement(playerPosition, health);
 		this._reapDead();
 	}
 
-	private _handleSpawn(deltaTimeMs: number, playerPosition: Vector3): void {
-		if (this._monsters.length >= this._config.maxCount) return;
-		this._spawnTimer += deltaTimeMs;
-		if (this._spawnTimer < this._config.spawnIntervalMs) return;
+	private _handleSpawn(deltaTimeMs: number, elapsedMs: number, playerPosition: Vector3): void {
+		if (this._monsters.length >= this._maxAtCurrentTime) return;
 
+		this._spawnTimer += deltaTimeMs;
+		const interval = this._curve.spawnIntervalAt(elapsedMs);
+		if (this._spawnTimer < interval) return;
 		this._spawnTimer = 0;
+
+		const unlocked = this._curve.unlockedTypeIdsAt(elapsedMs);
+		if (unlocked.length === 0) return;
+		const type = this._catalog.pickRandom(unlocked);
+
 		const radius = this._config.minSpawnRadius
 			+ Math.random() * (this._config.maxSpawnRadius - this._config.minSpawnRadius);
 		const angle = Math.random() * Math.PI * 2;
@@ -91,12 +92,11 @@ export class MonsterSpawner {
 
 		const monster = new Monster(this._scene, this._terrain, {
 			id: this._nextId++,
-			dimensions: { width: this._config.width, height: this._config.height },
+			type,
 			spawnX,
 			spawnZ,
-			maxHp: this._config.maxHp,
-			attackCooldownMs: this._config.attackCooldownMs,
 			flashDurationMs: this._config.flashDurationMs,
+			behavior: this._config.behavior,
 		});
 		this._monsters.push(monster);
 	}
@@ -112,20 +112,19 @@ export class MonsterSpawner {
 		for (let i = 0; i < this._monsters.length; i++) {
 			const monster = this._monsters[i];
 			if (monster.isDead) continue;
-			const selfVec = peerPositions[i];
 			const otherPeers = peerPositions.filter((_, j) => j !== i);
 
-			const direction = this._ai.computeMoveDirection(selfVec, playerVec, otherPeers);
-			const moveX = direction.x * this._config.speed;
-			const moveZ = direction.z * this._config.speed;
+			const direction = monster.computeMove(playerVec, otherPeers);
+			const moveX = direction.x * monster.type.speed;
+			const moveZ = direction.z * monster.type.speed;
 
 			if (moveX !== 0 || moveZ !== 0) monster.moveBy(moveX, moveZ);
 
-			if (this._ai.isInAttackRange(selfVec, playerVec)) {
+			if (monster.isInAttackRange(playerVec)) {
 				const now = Date.now();
-				if (now - monster.lastAttackTime >= this._config.attackCooldownMs) {
+				if (now - monster.lastAttackTime >= monster.type.attackCooldownMs) {
 					monster.markAttack(now);
-					health.damage(this._config.damage);
+					health.damage(monster.type.damage);
 				}
 			}
 		}
