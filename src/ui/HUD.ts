@@ -20,6 +20,8 @@ export class HUD {
 	private readonly _loadingTimerText: TextBlock;
 	private readonly _loadingBarFill: Rectangle;
 	private readonly _loadingPercentText: TextBlock;
+	private readonly _networkStatusText: TextBlock;
+	private readonly _pingText: TextBlock;
 	private readonly _resumeHandlers: (() => void)[] = [];
 	private readonly _restartHandlers: (() => void)[] = [];
 	private readonly _startGameHandlers: (() => void)[] = [];
@@ -37,7 +39,10 @@ export class HUD {
 		this._enemyCountText = stats.enemies;
 		this._timerText = stats.timer;
 		this._pauseOverlay = this._buildPauseOverlay();
-		this._mainMenuOverlay = this._buildMainMenuOverlay();
+		const mainMenu = this._buildMainMenuOverlay();
+		this._mainMenuOverlay = mainMenu.overlay;
+		this._networkStatusText = mainMenu.statusText;
+		this._pingText = this._buildPingText();
 		const loading = this._buildLoadingOverlay();
 		this._loadingOverlay = loading.overlay;
 		this._loadingTimerText = loading.timer;
@@ -112,6 +117,19 @@ export class HUD {
 
 	updateEnemyCount(count: number, max: number): void {
 		this._enemyCountText.text = `Enemies: ${count} / ${max}`;
+	}
+
+	updatePing(latencyMs: number | null): void {
+		if (latencyMs === null) {
+			this._pingText.text = 'Ping: --';
+			this._pingText.color = '#888888';
+			return;
+		}
+		const rounded = Math.round(latencyMs);
+		this._pingText.text = `Ping: ${rounded} ms`;
+		if (rounded < 50) this._pingText.color = '#3aa05a';
+		else if (rounded < 150) this._pingText.color = '#daa520';
+		else this._pingText.color = '#aa3a3a';
 	}
 
 	updateTimer(elapsedMs: number): void {
@@ -216,7 +234,7 @@ export class HUD {
 		return overlay;
 	}
 
-	private _buildMainMenuOverlay(): Rectangle {
+	private _buildMainMenuOverlay(): { overlay: Rectangle; statusText: TextBlock } {
 		const overlay = new Rectangle('mainMenuOverlay');
 		overlay.width = 1;
 		overlay.height = 1;
@@ -259,7 +277,29 @@ export class HUD {
 		startBtn.width = '380px';
 		stack.addControl(startBtn);
 
-		return overlay;
+		const statusText = new TextBlock('networkStatus');
+		statusText.text = 'Connexion au serveur...';
+		statusText.color = '#888888';
+		statusText.fontSize = 18;
+		statusText.height = '30px';
+		statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+		statusText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		stack.addControl(statusText);
+
+		return { overlay, statusText };
+	}
+
+	setNetworkStatus(status: 'online' | 'offline' | 'connecting'): void {
+		if (status === 'online') {
+			this._networkStatusText.text = '● Serveur connecté';
+			this._networkStatusText.color = '#3aa05a';
+		} else if (status === 'offline') {
+			this._networkStatusText.text = '● Mode hors ligne';
+			this._networkStatusText.color = '#aa3a3a';
+		} else {
+			this._networkStatusText.text = 'Connexion au serveur...';
+			this._networkStatusText.color = '#888888';
+		}
 	}
 
 	private _buildLoadingOverlay(): { overlay: Rectangle; timer: TextBlock; barFill: Rectangle; percent: TextBlock } {
@@ -328,6 +368,23 @@ export class HUD {
 		return { overlay, timer, barFill, percent };
 	}
 
+	private _buildPingText(): TextBlock {
+		const text = new TextBlock('pingText');
+		text.text = 'Ping: --';
+		text.color = '#888888';
+		text.fontSize = 18;
+		text.fontWeight = 'bold';
+		text.width = '160px';
+		text.height = '24px';
+		text.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+		text.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+		text.top = '4px';
+		text.left = '-10px';
+		text.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+		this._ui.addControl(text);
+		return text;
+	}
+
 	private _buildMenuButton(name: string, text: string, onClick: () => void): Button {
 		const btn = Button.CreateSimpleButton(name, text);
 		btn.width = '260px';
@@ -350,7 +407,7 @@ export class HUD {
 		panel.width = '220px';
 		panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
 		panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-		panel.top = '20px';
+		panel.top = '40px';
 		panel.left = '-20px';
 		this._ui.addControl(panel);
 

@@ -13,6 +13,9 @@ import { Vec3 } from './math/Vec3';
 import { DifficultyCurve } from './difficulty/DifficultyCurve';
 import { MonsterCatalog } from './difficulty/MonsterCatalog';
 import type { MonsterType } from './difficulty/MonsterType';
+import { NetworkClient } from './network/NetworkClient';
+
+const SERVER_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 
 const TILE_SIZE = 1;
 const PLAYER_MAX_HP = 100;
@@ -62,8 +65,10 @@ export class App {
 	private readonly _engine: GameEngine;
 	private readonly _input: InputManager;
 	private readonly _hud: HUD;
+	private readonly _network: NetworkClient;
 
 	private _state: GameState = 'menu';
+	private _currentRunId: string | null = null;
 
 	private _terrain?: TerrainGenerator;
 	private _chunks?: ChunkManager;
@@ -83,6 +88,13 @@ export class App {
 		this._engine = new GameEngine(canvas);
 		this._input = new InputManager(canvas);
 		this._hud = new HUD(this._engine.scene);
+		this._network = new NetworkClient(SERVER_URL);
+
+		void this._network.connect().then((ok) => {
+			this._hud.setNetworkStatus(ok ? 'online' : 'offline');
+		});
+
+		setInterval(() => { void this._tickPing(); }, 250);
 
 		this._hud.onStartGame(() => { void this._startNewGame(); });
 		this._hud.onResume(() => this._togglePause());
@@ -118,6 +130,11 @@ export class App {
 		this._hud.hideMainMenu();
 		this._hud.showLoadingScreen();
 		this._loadingStartMs = performance.now();
+
+		if (this._network.isConnected) {
+			const started = await this._network.startRun();
+			this._currentRunId = started?.runId ?? null;
+		}
 
 		this._terrain = new TerrainGenerator(TILE_SIZE);
 		this._chunks = new ChunkManager(this._engine.scene, this._terrain, {
@@ -233,6 +250,11 @@ export class App {
 		this._hud.showGameOver();
 		this._input.releasePointerLock();
 		this._input.setEnabled(false);
+
+		if (this._network.isConnected && this._currentRunId) {
+			const survivedMs = this._elapsedGameMs(performance.now());
+			void this._network.reportRun({ score: Math.floor(survivedMs / 1000), survivedMs });
+		}
 	}
 
 	private _dealSwordDamage(): void {
@@ -244,6 +266,15 @@ export class App {
 		const targets = this._spawner.getPositions();
 		const hits = this._hitDetector.computeHits(center, fwd, targets);
 		this._spawner.damageInRange(hits, SWORD_DAMAGE, performance.now());
+	}
+
+	private async _tickPing(): Promise<void> {
+		if (!this._network.isConnected) {
+			this._hud.updatePing(null);
+			return;
+		}
+		const latency = await this._network.ping();
+		this._hud.updatePing(latency);
 	}
 
 	private _elapsedGameMs(now: number): number {
