@@ -4,6 +4,7 @@ import type { TerrainGenerator } from '../world/TerrainGenerator';
 import { MonsterAI } from './MonsterAI';
 import type { HealthSystem } from '../systems/HealthSystem';
 import { Vec3 } from '../math/Vec3';
+import type { IVec3 } from '../math/Vec3';
 
 export interface MonsterSpawnerConfig {
 	maxCount: number;
@@ -15,10 +16,12 @@ export interface MonsterSpawnerConfig {
 	radius: number;
 	speed: number;
 	damage: number;
+	maxHp: number;
 	attackRange: number;
 	attackCooldownMs: number;
 	stoppingDistance: number;
 	separationWeight: number;
+	flashDurationMs: number;
 }
 
 export class MonsterSpawner {
@@ -52,9 +55,26 @@ export class MonsterSpawner {
 		return this._config.maxCount;
 	}
 
-	update(deltaTimeMs: number, playerPosition: Vector3, health: HealthSystem): void {
+	get monsters(): readonly Monster[] {
+		return this._monsters;
+	}
+
+	getPositions(): IVec3[] {
+		return this._monsters.map(m => Vec3.of(m.position.x, m.position.y, m.position.z));
+	}
+
+	damageInRange(indices: readonly number[], amount: number, nowMs: number): void {
+		for (const i of indices) {
+			const monster = this._monsters[i];
+			if (monster && !monster.isDead) monster.takeDamage(amount, nowMs);
+		}
+	}
+
+	update(deltaTimeMs: number, nowMs: number, playerPosition: Vector3, health: HealthSystem): void {
 		this._handleSpawn(deltaTimeMs, playerPosition);
+		this._tickMonsters(nowMs);
 		this._handleMovement(playerPosition, health);
+		this._reapDead();
 	}
 
 	private _handleSpawn(deltaTimeMs: number, playerPosition: Vector3): void {
@@ -69,24 +89,29 @@ export class MonsterSpawner {
 		const spawnX = playerPosition.x + Math.cos(angle) * radius;
 		const spawnZ = playerPosition.z + Math.sin(angle) * radius;
 
-		const monster = new Monster(
-			this._scene,
-			this._terrain,
-			{ width: this._config.width, height: this._config.height },
-			this._nextId++,
+		const monster = new Monster(this._scene, this._terrain, {
+			id: this._nextId++,
+			dimensions: { width: this._config.width, height: this._config.height },
 			spawnX,
 			spawnZ,
-			this._config.attackCooldownMs,
-		);
+			maxHp: this._config.maxHp,
+			attackCooldownMs: this._config.attackCooldownMs,
+			flashDurationMs: this._config.flashDurationMs,
+		});
 		this._monsters.push(monster);
+	}
+
+	private _tickMonsters(nowMs: number): void {
+		for (const m of this._monsters) m.tick(nowMs);
 	}
 
 	private _handleMovement(playerPosition: Vector3, health: HealthSystem): void {
 		const playerVec = Vec3.of(playerPosition.x, playerPosition.y, playerPosition.z);
-		const peerPositions = this._monsters.map(m => Vec3.of(m.position.x, m.position.y, m.position.z));
+		const peerPositions = this.getPositions();
 
 		for (let i = 0; i < this._monsters.length; i++) {
 			const monster = this._monsters[i];
+			if (monster.isDead) continue;
 			const selfVec = peerPositions[i];
 			const otherPeers = peerPositions.filter((_, j) => j !== i);
 
@@ -102,6 +127,15 @@ export class MonsterSpawner {
 					monster.markAttack(now);
 					health.damage(this._config.damage);
 				}
+			}
+		}
+	}
+
+	private _reapDead(): void {
+		for (let i = this._monsters.length - 1; i >= 0; i--) {
+			if (this._monsters[i].isDead) {
+				this._monsters[i].dispose();
+				this._monsters.splice(i, 1);
 			}
 		}
 	}

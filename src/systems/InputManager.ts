@@ -8,6 +8,7 @@ export class InputManager {
 	private readonly _keyDownHandlers: KeyHandler[] = [];
 	private readonly _mouseMoveHandlers: MouseMoveHandler[] = [];
 	private readonly _clickHandlers: (() => void)[] = [];
+	private readonly _attackHandlers: (() => void)[] = [];
 	private readonly _resizeHandlers: ResizeHandler[] = [];
 	private _enabled: boolean = true;
 
@@ -39,6 +40,10 @@ export class InputManager {
 
 	onClick(handler: () => void): void {
 		this._clickHandlers.push(handler);
+	}
+
+	onAttack(handler: () => void): void {
+		this._attackHandlers.push(handler);
 	}
 
 	onResize(handler: ResizeHandler): void {
@@ -73,6 +78,15 @@ export class InputManager {
 			if (!this._enabled) return;
 			this._clickHandlers.forEach(h => h());
 		});
+
+		this._canvas.addEventListener('mousedown', (ev) => {
+			if (!this._enabled) return;
+			if (ev.button !== 0) return;
+			if (!this.hasPointerLock()) return;
+			this._attackHandlers.forEach(h => h());
+		});
+
+		this._canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
 		this._canvas.addEventListener('mousemove', (ev) => {
 			if (!this._enabled) return;

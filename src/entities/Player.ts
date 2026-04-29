@@ -23,6 +23,7 @@ export class Player {
 
 	private readonly _mesh: Mesh;
 	private readonly _cameraRoot: TransformNode;
+	private readonly _bodyAnchor: TransformNode;
 	private readonly _camera: UniversalCamera;
 
 	private _velocityY: number = 0;
@@ -37,6 +38,7 @@ export class Player {
 
 		this._mesh = this._buildMesh();
 		this._cameraRoot = this._buildCameraRoot();
+		this._bodyAnchor = this._buildBodyAnchor();
 		this._camera = this._buildCamera();
 		this._wireMouseLook();
 	}
@@ -51,6 +53,20 @@ export class Player {
 
 	get camera(): UniversalCamera {
 		return this._camera;
+	}
+
+	get viewAnchor(): TransformNode {
+		return this._cameraRoot;
+	}
+
+	get bodyAnchor(): TransformNode {
+		return this._bodyAnchor;
+	}
+
+	get forwardDirection(): Vector3 {
+		const forward = this._mesh.getDirection(Vector3.Forward());
+		forward.y = 0;
+		return forward.normalize();
 	}
 
 	toggleThirdPerson(): void {
@@ -77,6 +93,13 @@ export class Player {
 		root.parent = this._mesh;
 		root.position = new Vector3(0, 0.4, 0);
 		return root;
+	}
+
+	private _buildBodyAnchor(): TransformNode {
+		const anchor = new TransformNode('bodyAnchor', this._scene);
+		anchor.parent = this._mesh;
+		anchor.position = new Vector3(0, 0, 0);
+		return anchor;
 	}
 
 	private _buildCamera(): UniversalCamera {
