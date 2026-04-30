@@ -1,17 +1,17 @@
 FROM node:20-alpine
 
+RUN npm install -g pnpm
+
 WORKDIR /app
 
-RUN npm install -g pnpm
-RUN pnpm config set store-dir /pnpm/store
+COPY shared-package/ ./shared-package/
+COPY client/ ./client/
 
-COPY package.json ./
+WORKDIR /app/client
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install
 
-COPY . .
-
 EXPOSE 5173
 
-CMD ["pnpm", "run dev"]
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]
