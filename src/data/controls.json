@@ -3,5 +3,6 @@
 	"moveBackward": "KeyS",
 	"moveLeft": "KeyA",
 	"moveRight": "KeyD",
-	"jump": "Space"
+	"jump": "Space",
+	"togglePanel": "Digit1"
 }

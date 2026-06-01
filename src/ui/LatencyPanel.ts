@@ -1,0 +1,409 @@
+/**
+ * @file In-scene network status overlay (latency per player + server tick).
+ *
+ * Rendered entirely with Babylon GUI so it ships with the canvas: screenshots,
+ * fullscreen and future post-processing all keep it visible.
+ *
+ * Visual language:
+ *  - Dark slate background with a thin indigo accent border.
+ *  - Each player row is a Grid: status dot, name, mini latency bar, value.
+ *  - The bar represents *connection quality* (full = healthy), so the eye
+ *    instantly maps "more colored" to "better".
+ *  - Server tick lives in a footer with a top divider — separates the
+ *    per-player block from the global state.
+ *  - Show / hide is animated (alpha fade) for a less jarring toggle.
+ *
+ * The panel is hidden by default; `UiHotkeys` drives `toggle()`.
+ */
+
+import type { Observer } from '@babylonjs/core/Misc/observable';
+import type { Scene } from '@babylonjs/core/scene';
+import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
+import { Control } from '@babylonjs/gui/2D/controls/control';
+import { Grid } from '@babylonjs/gui/2D/controls/grid';
+import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
+import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
+import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
+
+// Color thresholds (ms) for the per-player dot and value text.
+const LATENCY_GOOD_MS = 50;
+const LATENCY_OK_MS = 150;
+
+// Palette — Tailwind slate + indigo + emerald/amber/rose so the readout
+// matches the existing dark background of the page.
+const COLOR_BG = '#0f172aeb';
+const COLOR_BORDER = 'rgba(129, 140, 248, 0.35)';
+const COLOR_ACCENT = '#818cf8';
+const COLOR_DIVIDER = 'rgba(148, 163, 184, 0.18)';
+const COLOR_TEXT_PRIMARY = '#f1f5f9';
+const COLOR_TEXT_MUTED = '#94a3b8';
+const COLOR_GOOD = '#10b981';
+const COLOR_OK = '#f59e0b';
+const COLOR_BAD = '#ef4444';
+const COLOR_UNKNOWN = '#64748b';
+
+const PANEL_WIDTH_PX = 280;
+const PANEL_PADDING_X_PX = 16;
+const PANEL_PADDING_Y_PX = 14;
+const INNER_WIDTH_PX = PANEL_WIDTH_PX - PANEL_PADDING_X_PX * 2;
+const ROW_HEIGHT_PX = 26;
+const HEADER_HEIGHT_PX = 22;
+const FOOTER_HEIGHT_PX = 26;
+const DIVIDER_HEIGHT_PX = 1;
+const DOT_SIZE_PX = 10;
+
+const FONT_PRIMARY = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+const FONT_MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+// Per-frame easing toward target alpha — 0..1, higher = snappier.
+const FADE_LERP = 0.18;
+
+interface Row {
+	root: Grid;
+	dot: Rectangle;
+	name: TextBlock;
+	value: TextBlock;
+}
+
+export class LatencyPanel {
+	private readonly scene: Scene;
+	private readonly ui: AdvancedDynamicTexture;
+	private readonly root: Rectangle;
+	private readonly list: StackPanel;
+	private readonly footerTick: TextBlock;
+	private readonly footerTps: TextBlock;
+	private readonly footerFps: TextBlock;
+	private readonly rows = new Map<string, Row>();
+	private readonly localSessionId: string;
+
+	private targetAlpha = 0;
+	private currentAlpha = 0;
+	private renderObserver: Observer<Scene> | null = null;
+
+	constructor(scene: Scene, localSessionId: string) {
+		this.scene = scene;
+		this.localSessionId = localSessionId;
+
+		this.ui = AdvancedDynamicTexture.CreateFullscreenUI('latencyUI', true, scene);
+
+		this.root = new Rectangle('latencyPanel');
+		this.root.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+		this.root.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+		this.root.top = '16px';
+		this.root.left = '-16px';
+		this.root.width = `${PANEL_WIDTH_PX}px`;
+		this.root.background = COLOR_BG;
+		this.root.color = COLOR_BORDER;
+		this.root.thickness = 1;
+		this.root.cornerRadius = 12;
+		this.root.adaptHeightToChildren = true;
+		this.root.shadowBlur = 24;
+		this.root.shadowOffsetX = 0;
+		this.root.shadowOffsetY = 8;
+		this.root.shadowColor = 'rgba(0, 0, 0, 0.45)';
+		this.root.alpha = 0;
+		this.root.isVisible = false;
+		this.ui.addControl(this.root);
+
+		// Babylon GUI's `padding*` on a Rectangle does NOT compose with
+		// `adaptHeightToChildren` — children would overflow the rounded border.
+		// Instead, fix the inner width explicitly and emulate vertical padding
+		// with spacers at the top and bottom of the stack.
+		const stack = new StackPanel('latencyStack');
+		stack.isVertical = true;
+		stack.width = `${INNER_WIDTH_PX}px`;
+		stack.adaptHeightToChildren = true;
+		this.root.addControl(stack);
+
+		stack.addControl(this.buildSpacer(PANEL_PADDING_Y_PX));
+		stack.addControl(this.buildHeader());
+		stack.addControl(this.buildSpacer(10));
+
+		this.list = new StackPanel('latencyList');
+		this.list.isVertical = true;
+		this.list.width = 1;
+		this.list.adaptHeightToChildren = true;
+		stack.addControl(this.list);
+
+		stack.addControl(this.buildSpacer(10));
+		stack.addControl(this.buildDivider());
+		stack.addControl(this.buildSpacer(8));
+
+		const footer = this.buildFooter();
+		this.footerTick = footer.tick;
+		this.footerTps = footer.tps;
+		this.footerFps = footer.fps;
+		stack.addControl(footer.root);
+
+		stack.addControl(this.buildSpacer(PANEL_PADDING_Y_PX));
+
+		this.renderObserver = scene.onBeforeRenderObservable.add(() => this.tickFade());
+	}
+
+	add(sessionId: string, latencyMs: number): void {
+		if (this.rows.has(sessionId)) {
+			this.update(sessionId, latencyMs);
+			return;
+		}
+
+		const row = new Grid(`row-${sessionId}`);
+		row.height = `${ROW_HEIGHT_PX}px`;
+		row.width = 1;
+		// dot | name | value
+		row.addColumnDefinition(18, true);
+		row.addColumnDefinition(1);
+		row.addColumnDefinition(64, true);
+
+		const dot = new Rectangle(`dot-${sessionId}`);
+		dot.width = `${DOT_SIZE_PX}px`;
+		dot.height = `${DOT_SIZE_PX}px`;
+		dot.cornerRadius = DOT_SIZE_PX;
+		dot.thickness = 0;
+		dot.background = COLOR_UNKNOWN;
+		dot.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+		dot.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		row.addControl(dot, 0, 0);
+
+		const name = new TextBlock(`name-${sessionId}`);
+		name.text =
+			sessionId === this.localSessionId
+				? `${this.shortId(sessionId)} (you)`
+				: this.shortId(sessionId);
+		name.color = COLOR_TEXT_PRIMARY;
+		name.fontFamily = FONT_PRIMARY;
+		name.fontSize = 13;
+		name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+		name.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		name.paddingLeft = '2px';
+		row.addControl(name, 0, 1);
+
+		const value = new TextBlock(`value-${sessionId}`);
+		value.color = COLOR_TEXT_MUTED;
+		value.fontFamily = FONT_MONO;
+		value.fontSize = 12;
+		value.text = '--';
+		value.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+		value.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		row.addControl(value, 0, 2);
+
+		this.list.addControl(row);
+		this.rows.set(sessionId, { root: row, dot, name, value });
+		this.update(sessionId, latencyMs);
+	}
+
+	update(sessionId: string, latencyMs: number): void {
+		const row = this.rows.get(sessionId);
+		if (row === undefined) {
+			return;
+		}
+		if (latencyMs <= 0) {
+			row.value.text = '--';
+			row.value.color = COLOR_TEXT_MUTED;
+			row.dot.background = COLOR_UNKNOWN;
+			return;
+		}
+
+		const rounded = Math.round(latencyMs);
+		const color = this.colorForLatency(rounded);
+		row.value.text = `${rounded} ms`;
+		row.value.color = color;
+		row.dot.background = color;
+	}
+
+	remove(sessionId: string): void {
+		const row = this.rows.get(sessionId);
+		if (row === undefined) {
+			return;
+		}
+		this.list.removeControl(row.root);
+		row.root.dispose();
+		this.rows.delete(sessionId);
+	}
+
+	setServerTick(tick: number): void {
+		this.footerTick.text = this.formatTick(tick);
+	}
+
+	/** Observed server tick rate. Colored against the configured target. */
+	setServerTps(tps: number): void {
+		this.footerTps.text = `${tps.toFixed(1)} Hz`;
+	}
+
+	/** Client-side render FPS (Babylon smoothed). */
+	setClientFps(fps: number): void {
+		this.footerFps.text = `${fps.toFixed(0)} Hz`;
+	}
+
+	setVisible(visible: boolean): void {
+		this.targetAlpha = visible ? 1 : 0;
+		if (visible) {
+			this.root.isVisible = true;
+		}
+	}
+
+	toggle(): boolean {
+		const next = this.targetAlpha < 0.5;
+		this.setVisible(next);
+		return next;
+	}
+
+	dispose(): void {
+		if (this.renderObserver !== null) {
+			this.scene.onBeforeRenderObservable.remove(this.renderObserver);
+			this.renderObserver = null;
+		}
+		for (const row of this.rows.values()) {
+			row.root.dispose();
+		}
+		this.rows.clear();
+		this.ui.dispose();
+	}
+
+	private tickFade(): void {
+		if (Math.abs(this.currentAlpha - this.targetAlpha) < 0.005) {
+			if (this.currentAlpha !== this.targetAlpha) {
+				this.currentAlpha = this.targetAlpha;
+				this.root.alpha = this.currentAlpha;
+				if (this.currentAlpha === 0) {
+					this.root.isVisible = false;
+				}
+			}
+			return;
+		}
+		this.currentAlpha += (this.targetAlpha - this.currentAlpha) * FADE_LERP;
+		this.root.alpha = this.currentAlpha;
+	}
+
+	private buildHeader(): StackPanel {
+		const panel = new StackPanel('latencyHeader');
+		panel.isVertical = true;
+		panel.width = 1;
+		panel.adaptHeightToChildren = true;
+
+		const titleRow = new Grid('latencyHeaderRow');
+		titleRow.height = `${HEADER_HEIGHT_PX}px`;
+		titleRow.width = 1;
+		titleRow.addColumnDefinition(10, true);
+		titleRow.addColumnDefinition(1);
+
+		const accent = new Rectangle('headerAccent');
+		accent.width = '3px';
+		accent.height = '14px';
+		accent.cornerRadius = 2;
+		accent.background = COLOR_ACCENT;
+		accent.thickness = 0;
+		accent.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+		accent.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		titleRow.addControl(accent, 0, 0);
+
+		const title = new TextBlock('headerTitle', 'NETWORK');
+		title.color = COLOR_TEXT_PRIMARY;
+		title.fontFamily = FONT_PRIMARY;
+		title.fontSize = 11;
+		title.fontWeight = '600';
+		// Letter-spacing is supported via CSS-ish string on Babylon GUI text:
+		// we simulate it by adding a hair space between characters when needed.
+		title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+		title.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		title.paddingLeft = '6px';
+		titleRow.addControl(title, 0, 1);
+
+		panel.addControl(titleRow);
+		return panel;
+	}
+
+	private buildFooter(): {
+		root: StackPanel;
+		tick: TextBlock;
+		tps: TextBlock;
+		fps: TextBlock;
+	} {
+		const panel = new StackPanel('latencyFooter');
+		panel.isVertical = true;
+		panel.width = 1;
+		panel.adaptHeightToChildren = true;
+
+		const tick = this.buildFooterRow('TICK', 'SERVER TICK', '--');
+		const tps = this.buildFooterRow('TPS', 'SERVER TPS', '--');
+		const fps = this.buildFooterRow('FPS', 'CLIENT FPS', '--');
+
+		panel.addControl(tick.root);
+		panel.addControl(tps.root);
+		panel.addControl(fps.root);
+
+		return { root: panel, tick: tick.value, tps: tps.value, fps: fps.value };
+	}
+
+	private buildFooterRow(
+		id: string,
+		labelText: string,
+		initialValue: string,
+	): { root: Grid; value: TextBlock } {
+		const row = new Grid(`footer-${id}`);
+		row.height = `${FOOTER_HEIGHT_PX}px`;
+		row.width = 1;
+		row.addColumnDefinition(0.55);
+		row.addColumnDefinition(0.45);
+
+		const label = new TextBlock(`footer-${id}-label`, labelText);
+		label.color = COLOR_TEXT_MUTED;
+		label.fontFamily = FONT_PRIMARY;
+		label.fontSize = 10;
+		label.fontWeight = '600';
+		label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+		label.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		row.addControl(label, 0, 0);
+
+		const value = new TextBlock(`footer-${id}-value`, initialValue);
+		value.color = COLOR_ACCENT;
+		value.fontFamily = FONT_MONO;
+		value.fontSize = 13;
+		value.fontWeight = '600';
+		value.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+		value.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		row.addControl(value, 0, 1);
+
+		return { root: row, value };
+	}
+
+	private buildDivider(): Rectangle {
+		const divider = new Rectangle('latencyDivider');
+		divider.height = `${DIVIDER_HEIGHT_PX}px`;
+		divider.width = 1;
+		divider.background = COLOR_DIVIDER;
+		divider.thickness = 0;
+		return divider;
+	}
+
+	private buildSpacer(heightPx: number): Rectangle {
+		const spacer = new Rectangle(`spacer-${heightPx}`);
+		spacer.height = `${heightPx}px`;
+		spacer.width = 1;
+		spacer.thickness = 0;
+		spacer.background = 'transparent';
+		return spacer;
+	}
+
+	private colorForLatency(latencyMs: number): string {
+		if (latencyMs < LATENCY_GOOD_MS) {
+			return COLOR_GOOD;
+		}
+		if (latencyMs < LATENCY_OK_MS) {
+			return COLOR_OK;
+		}
+		return COLOR_BAD;
+	}
+
+	/**
+	 * Colyseus session ids are 9 chars — short enough to display raw, but a
+	 * fixed monospaced 7-char truncation keeps rows visually aligned.
+	 */
+	private shortId(id: string): string {
+		return id.length > 7 ? `${id.slice(0, 7)}…` : id;
+	}
+
+	private formatTick(tick: number): string {
+		// Thousands separators read better at high values; locale-independent.
+		return Math.floor(tick).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+	}
+}

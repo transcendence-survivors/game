@@ -19,6 +19,8 @@ export interface ControlsConfig {
 	readonly moveLeft: string;
 	readonly moveRight: string;
 	readonly jump: string;
+	/** Key that toggles the in-game latency panel on / off. */
+	readonly togglePanel: string;
 }
 
 /** Rendering / scene appearance parameters. Colors are CSS hex strings. */
@@ -43,6 +45,8 @@ export interface RenderConfig {
 export interface NetworkConfig {
 	readonly endpoint: string;
 	readonly sendRateHz: number;
+	/** How often the client emits a latency probe (ms). */
+	readonly pingIntervalMs: number;
 }
 
 export interface ClientConfig {
@@ -68,6 +72,7 @@ export function loadConfig(): ClientConfig {
 	const finalNetwork: NetworkConfig = {
 		endpoint: envEndpoint !== undefined && envEndpoint.length > 0 ? envEndpoint : network.endpoint,
 		sendRateHz: network.sendRateHz,
+		pingIntervalMs: network.pingIntervalMs,
 	};
 	cached = Object.freeze({
 		controls: Object.freeze({ ...controls }),

@@ -5,7 +5,7 @@
  *   1. Load configs (controls, render, network).
  *   2. Build the Babylon engine + game scene.
  *   3. Connect to the Colyseus server, join the canonical room.
- *   4. Wire the input manager and room handler.
+ *   4. Wire input, hotkeys, latency tracker, panel and room handler.
  *   5. Start the render loop.
  *
  * Anything that fails during boot is rendered into the page as a fallback
@@ -16,11 +16,15 @@ import './global.css';
 
 import { loadConfig } from './core/ConfigLoader';
 import { GameEngine } from './core/Engine';
+import { StatsSampler } from './core/StatsSampler';
 import { PlayerRegistry } from './entities/PlayerRegistry';
 import { InputManager } from './input/InputManager';
+import { UiHotkeys } from './input/UiHotkeys';
+import { LatencyTracker } from './network/LatencyTracker';
 import { NetworkClient } from './network/NetworkClient';
 import { RoomHandler } from './network/RoomHandler';
 import { createGameScene } from './scenes/GameScene';
+import { LatencyPanel } from './ui/LatencyPanel';
 
 async function bootstrap(): Promise<void> {
 	const canvas = document.querySelector<HTMLCanvasElement>('#game');
@@ -30,7 +34,7 @@ async function bootstrap(): Promise<void> {
 
 	const config = loadConfig();
 	console.log(
-		`[client] config — endpoint=${config.network.endpoint}, sendRate=${config.network.sendRateHz}Hz`,
+		`[client] config — endpoint=${config.network.endpoint}, sendRate=${config.network.sendRateHz}Hz, ping=${config.network.pingIntervalMs}ms`,
 	);
 
 	const engine = new GameEngine(canvas);
@@ -42,18 +46,44 @@ async function bootstrap(): Promise<void> {
 	console.log(`[client] joined room "${room.name}" as ${room.sessionId}`);
 
 	const registry = new PlayerRegistry(scene, config.render, room.sessionId);
+	const panel = new LatencyPanel(scene, room.sessionId);
+
 	const input = new InputManager(config.controls);
 	input.attach();
 
-	const handler = new RoomHandler(room, registry, input, config.network.sendRateHz);
+	const hotkeys = new UiHotkeys({ togglePanel: config.controls.togglePanel }, () =>
+		panel.toggle(),
+	);
+	hotkeys.attach();
+
+	const latency = new LatencyTracker(room, config.network.pingIntervalMs);
+	latency.attach();
+
+	const handler = new RoomHandler(room, registry, panel, input, config.network.sendRateHz);
 	handler.attach();
+
+	const stats = new StatsSampler(
+		engine,
+		() => (room.state as { tick: number }).tick,
+		{
+			onFps: (fps) => panel.setClientFps(fps),
+			onTps: (tps) => panel.setServerTps(tps),
+		},
+		{ intervalMs: 500 },
+	);
+	stats.attach();
 
 	engine.start();
 
 	// Cleanup on hot-reload (Vite) or tab close.
 	window.addEventListener('beforeunload', () => {
+		stats.detach();
+		latency.detach();
 		void handler.detach();
+		hotkeys.detach();
 		input.detach();
+		registry.dispose();
+		panel.dispose();
 		engine.dispose();
 	});
 }
