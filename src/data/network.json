@@ -1,0 +1,4 @@
+{
+	"endpoint": "ws://localhost:4000",
+	"sendRateHz": 30
+}

@@ -1,0 +1,7 @@
+{
+	"moveForward": "KeyW",
+	"moveBackward": "KeyS",
+	"moveLeft": "KeyA",
+	"moveRight": "KeyD",
+	"jump": "Space"
+}

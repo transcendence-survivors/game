@@ -1,0 +1,12 @@
+{
+	"clearColor": "#1e293b",
+	"ambientIntensity": 0.7,
+	"cameraAlpha": -1.57,
+	"cameraBeta": 0.9,
+	"cameraRadius": 15,
+	"cameraTargetY": 1,
+	"groundSize": 40,
+	"groundColor": "#374151",
+	"localPlayerColor": "#22c55e",
+	"remotePlayerColor": "#ef4444"
+}
