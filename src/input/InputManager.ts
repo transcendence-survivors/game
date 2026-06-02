@@ -11,28 +11,31 @@
 
 import type { InputCommand } from '@transcendence/game-shared';
 import type { ControlsConfig } from '../core/ConfigLoader';
+import { KeyboardListener } from './KeyboardListener';
 
 export class InputManager {
 	private readonly controls: ControlsConfig;
 	private readonly heldKeys = new Set<string>();
+	private readonly keyboard: KeyboardListener;
 	private jumpQueued = false;
 	/** Monotonic counter stamped onto every {@link snapshot}; see InputCommand.seq. */
 	private seq = 0;
 
 	constructor(controls: ControlsConfig) {
 		this.controls = controls;
+		// Assigned here (not as a field initializer) so the onKeyDown/onKeyUp
+		// arrow fields are already initialized when captured.
+		this.keyboard = new KeyboardListener(this.onKeyDown, this.onKeyUp);
 	}
 
 	/** Begin listening for keyboard events on `window`. */
 	attach(): void {
-		window.addEventListener('keydown', this.onKeyDown);
-		window.addEventListener('keyup', this.onKeyUp);
+		this.keyboard.attach();
 	}
 
 	/** Stop listening. Safe to call multiple times. */
 	detach(): void {
-		window.removeEventListener('keydown', this.onKeyDown);
-		window.removeEventListener('keyup', this.onKeyUp);
+		this.keyboard.detach();
 		this.heldKeys.clear();
 		this.jumpQueued = false;
 		this.seq = 0;

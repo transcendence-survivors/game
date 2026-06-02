@@ -89,11 +89,9 @@ export function loadConfig(): ClientConfig {
 		return cached;
 	}
 	const envEndpoint = import.meta.env.VITE_GAME_SOCKET_URL as string | undefined;
-	const finalNetwork: NetworkConfig = {
-		endpoint: envEndpoint !== undefined && envEndpoint.length > 0 ? envEndpoint : network.endpoint,
-		sendRateHz: network.sendRateHz,
-		pingIntervalMs: network.pingIntervalMs,
-	};
+	// `||` falls back on both undefined and an empty string; the spread carries
+	// over every other network field automatically.
+	const finalNetwork: NetworkConfig = { ...network, endpoint: envEndpoint || network.endpoint };
 	cached = Object.freeze({
 		controls: Object.freeze({ ...controls }),
 		render: Object.freeze({ ...render }),

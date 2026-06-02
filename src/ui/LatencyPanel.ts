@@ -65,6 +65,65 @@ interface Row {
 	value: TextBlock;
 }
 
+interface TextOpts {
+	color: string;
+	font: string;
+	size: number;
+	/** `Control.HORIZONTAL_ALIGNMENT_*` — text is always vertically centered. */
+	align: number;
+	weight?: string;
+	paddingLeft?: string;
+}
+
+/** Build a {@link TextBlock} with the panel's common defaults applied. */
+function makeText(name: string, text: string, o: TextOpts): TextBlock {
+	const t = new TextBlock(name, text);
+	t.color = o.color;
+	t.fontFamily = o.font;
+	t.fontSize = o.size;
+	t.textHorizontalAlignment = o.align;
+	t.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+	if (o.weight !== undefined) {
+		t.fontWeight = o.weight;
+	}
+	if (o.paddingLeft !== undefined) {
+		t.paddingLeft = o.paddingLeft;
+	}
+	return t;
+}
+
+interface RectOpts {
+	width?: string | number;
+	height?: string | number;
+	background: string;
+	cornerRadius?: number;
+	align?: number;
+	vAlign?: number;
+}
+
+/** Build a borderless {@link Rectangle} (the panel never uses rect borders). */
+function makeRect(name: string, o: RectOpts): Rectangle {
+	const r = new Rectangle(name);
+	if (o.width !== undefined) {
+		r.width = o.width;
+	}
+	if (o.height !== undefined) {
+		r.height = o.height;
+	}
+	r.background = o.background;
+	r.thickness = 0;
+	if (o.cornerRadius !== undefined) {
+		r.cornerRadius = o.cornerRadius;
+	}
+	if (o.align !== undefined) {
+		r.horizontalAlignment = o.align;
+	}
+	if (o.vAlign !== undefined) {
+		r.verticalAlignment = o.vAlign;
+	}
+	return r;
+}
+
 export class LatencyPanel {
 	private readonly scene: Scene;
 	private readonly ui: AdvancedDynamicTexture;
@@ -154,36 +213,35 @@ export class LatencyPanel {
 		row.addColumnDefinition(1);
 		row.addColumnDefinition(64, true);
 
-		const dot = new Rectangle(`dot-${sessionId}`);
-		dot.width = `${DOT_SIZE_PX}px`;
-		dot.height = `${DOT_SIZE_PX}px`;
-		dot.cornerRadius = DOT_SIZE_PX;
-		dot.thickness = 0;
-		dot.background = COLOR_UNKNOWN;
-		dot.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-		dot.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		const dot = makeRect(`dot-${sessionId}`, {
+			width: `${DOT_SIZE_PX}px`,
+			height: `${DOT_SIZE_PX}px`,
+			cornerRadius: DOT_SIZE_PX,
+			background: COLOR_UNKNOWN,
+			align: Control.HORIZONTAL_ALIGNMENT_LEFT,
+			vAlign: Control.VERTICAL_ALIGNMENT_CENTER,
+		});
 		row.addControl(dot, 0, 0);
 
-		const name = new TextBlock(`name-${sessionId}`);
-		name.text =
+		const label =
 			sessionId === this.localSessionId
 				? `${this.shortId(sessionId)} (you)`
 				: this.shortId(sessionId);
-		name.color = COLOR_TEXT_PRIMARY;
-		name.fontFamily = FONT_PRIMARY;
-		name.fontSize = 13;
-		name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-		name.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-		name.paddingLeft = '2px';
+		const name = makeText(`name-${sessionId}`, label, {
+			color: COLOR_TEXT_PRIMARY,
+			font: FONT_PRIMARY,
+			size: 13,
+			align: Control.HORIZONTAL_ALIGNMENT_LEFT,
+			paddingLeft: '2px',
+		});
 		row.addControl(name, 0, 1);
 
-		const value = new TextBlock(`value-${sessionId}`);
-		value.color = COLOR_TEXT_MUTED;
-		value.fontFamily = FONT_MONO;
-		value.fontSize = 12;
-		value.text = '--';
-		value.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-		value.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		const value = makeText(`value-${sessionId}`, '--', {
+			color: COLOR_TEXT_MUTED,
+			font: FONT_MONO,
+			size: 12,
+			align: Control.HORIZONTAL_ALIGNMENT_RIGHT,
+		});
 		row.addControl(value, 0, 2);
 
 		this.list.addControl(row);
@@ -234,7 +292,7 @@ export class LatencyPanel {
 		this.footerFps.text = `${fps.toFixed(0)} Hz`;
 	}
 
-	setVisible(visible: boolean): void {
+	private setVisible(visible: boolean): void {
 		this.targetAlpha = visible ? 1 : 0;
 		if (visible) {
 			this.root.isVisible = true;
@@ -286,26 +344,24 @@ export class LatencyPanel {
 		titleRow.addColumnDefinition(10, true);
 		titleRow.addColumnDefinition(1);
 
-		const accent = new Rectangle('headerAccent');
-		accent.width = '3px';
-		accent.height = '14px';
-		accent.cornerRadius = 2;
-		accent.background = COLOR_ACCENT;
-		accent.thickness = 0;
-		accent.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-		accent.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		const accent = makeRect('headerAccent', {
+			width: '3px',
+			height: '14px',
+			cornerRadius: 2,
+			background: COLOR_ACCENT,
+			align: Control.HORIZONTAL_ALIGNMENT_LEFT,
+			vAlign: Control.VERTICAL_ALIGNMENT_CENTER,
+		});
 		titleRow.addControl(accent, 0, 0);
 
-		const title = new TextBlock('headerTitle', 'NETWORK');
-		title.color = COLOR_TEXT_PRIMARY;
-		title.fontFamily = FONT_PRIMARY;
-		title.fontSize = 11;
-		title.fontWeight = '600';
-		// Letter-spacing is supported via CSS-ish string on Babylon GUI text:
-		// we simulate it by adding a hair space between characters when needed.
-		title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-		title.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-		title.paddingLeft = '6px';
+		const title = makeText('headerTitle', 'NETWORK', {
+			color: COLOR_TEXT_PRIMARY,
+			font: FONT_PRIMARY,
+			size: 11,
+			weight: '600',
+			align: Control.HORIZONTAL_ALIGNMENT_LEFT,
+			paddingLeft: '6px',
+		});
 		titleRow.addControl(title, 0, 1);
 
 		panel.addControl(titleRow);
@@ -345,43 +401,41 @@ export class LatencyPanel {
 		row.addColumnDefinition(0.55);
 		row.addColumnDefinition(0.45);
 
-		const label = new TextBlock(`footer-${id}-label`, labelText);
-		label.color = COLOR_TEXT_MUTED;
-		label.fontFamily = FONT_PRIMARY;
-		label.fontSize = 10;
-		label.fontWeight = '600';
-		label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-		label.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		const label = makeText(`footer-${id}-label`, labelText, {
+			color: COLOR_TEXT_MUTED,
+			font: FONT_PRIMARY,
+			size: 10,
+			weight: '600',
+			align: Control.HORIZONTAL_ALIGNMENT_LEFT,
+		});
 		row.addControl(label, 0, 0);
 
-		const value = new TextBlock(`footer-${id}-value`, initialValue);
-		value.color = COLOR_ACCENT;
-		value.fontFamily = FONT_MONO;
-		value.fontSize = 13;
-		value.fontWeight = '600';
-		value.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-		value.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+		const value = makeText(`footer-${id}-value`, initialValue, {
+			color: COLOR_ACCENT,
+			font: FONT_MONO,
+			size: 13,
+			weight: '600',
+			align: Control.HORIZONTAL_ALIGNMENT_RIGHT,
+		});
 		row.addControl(value, 0, 1);
 
 		return { root: row, value };
 	}
 
 	private buildDivider(): Rectangle {
-		const divider = new Rectangle('latencyDivider');
-		divider.height = `${DIVIDER_HEIGHT_PX}px`;
-		divider.width = 1;
-		divider.background = COLOR_DIVIDER;
-		divider.thickness = 0;
-		return divider;
+		return makeRect('latencyDivider', {
+			width: 1,
+			height: `${DIVIDER_HEIGHT_PX}px`,
+			background: COLOR_DIVIDER,
+		});
 	}
 
 	private buildSpacer(heightPx: number): Rectangle {
-		const spacer = new Rectangle(`spacer-${heightPx}`);
-		spacer.height = `${heightPx}px`;
-		spacer.width = 1;
-		spacer.thickness = 0;
-		spacer.background = 'transparent';
-		return spacer;
+		return makeRect(`spacer-${heightPx}`, {
+			width: 1,
+			height: `${heightPx}px`,
+			background: 'transparent',
+		});
 	}
 
 	private colorForLatency(latencyMs: number): string {

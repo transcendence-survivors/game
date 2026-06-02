@@ -65,11 +65,6 @@ export class PlayerEntity {
 		p.z += (this.target.z - p.z) * alpha;
 	}
 
-	/** Read the cube's current world position (for camera follow, etc.). */
-	get position(): Readonly<Vector3> {
-		return this.mesh.position;
-	}
-
 	/** Remove the mesh from the scene and free its GPU resources. */
 	dispose(): void {
 		this.mesh.material?.dispose();

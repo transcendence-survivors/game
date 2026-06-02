@@ -64,11 +64,6 @@ export class PlayerRegistry {
 		this.entities.delete(id);
 	}
 
-	/** Whether an entity exists for the given id. */
-	has(id: string): boolean {
-		return this.entities.has(id);
-	}
-
 	/** Detach the render observer. Call when tearing down the scene. */
 	dispose(): void {
 		if (this.renderObserver !== null) {

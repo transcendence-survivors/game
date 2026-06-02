@@ -8,6 +8,8 @@
  * does not re-fire — the next firing requires a release-then-press cycle.
  */
 
+import { KeyboardListener } from './KeyboardListener';
+
 export interface UiHotkeysBindings {
 	/** `KeyboardEvent.code` that toggles the latency panel. */
 	readonly togglePanel: string;
@@ -16,21 +18,23 @@ export interface UiHotkeysBindings {
 export class UiHotkeys {
 	private readonly bindings: UiHotkeysBindings;
 	private readonly onTogglePanel: () => void;
+	private readonly keyboard: KeyboardListener;
 	private togglePanelPressed = false;
 
 	constructor(bindings: UiHotkeysBindings, onTogglePanel: () => void) {
 		this.bindings = bindings;
 		this.onTogglePanel = onTogglePanel;
+		// Assigned here (not as a field initializer) so the onKeyDown/onKeyUp
+		// arrow fields are already initialized when captured.
+		this.keyboard = new KeyboardListener(this.onKeyDown, this.onKeyUp);
 	}
 
 	attach(): void {
-		window.addEventListener('keydown', this.onKeyDown);
-		window.addEventListener('keyup', this.onKeyUp);
+		this.keyboard.attach();
 	}
 
 	detach(): void {
-		window.removeEventListener('keydown', this.onKeyDown);
-		window.removeEventListener('keyup', this.onKeyUp);
+		this.keyboard.detach();
 		this.togglePanelPressed = false;
 	}
 
