@@ -19,22 +19,22 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import type { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 
-/**
- * Convergence rate (per second) of the position lerp. Higher = snappier but
- * also closer to a raw snap; lower = smoother but more visibly lagging behind
- * the server. 18 is a good fit for a 20 Hz patchRate.
- */
-const INTERP_RATE = 18;
-
 export class PlayerEntity {
 	private readonly mesh: Mesh;
 	private readonly target = new Vector3();
+	/**
+	 * Convergence rate (per second) of the position lerp. Higher = snappier but
+	 * also closer to a raw snap; lower = smoother but more visibly lagging
+	 * behind the server. Sourced from {@link RenderConfig.interpRate}.
+	 */
+	private readonly interpRate: number;
 
-	constructor(id: string, scene: Scene, colorHex: string) {
+	constructor(id: string, scene: Scene, colorHex: string, interpRate: number) {
 		this.mesh = CreateBox(`player-${id}`, { size: 1 }, scene);
 		const mat = new StandardMaterial(`player-${id}-mat`, scene);
 		mat.diffuseColor = Color3.FromHexString(colorHex);
 		this.mesh.material = mat;
+		this.interpRate = interpRate;
 	}
 
 	/**
@@ -58,7 +58,7 @@ export class PlayerEntity {
 	 * factor — same convergence regardless of whether we tick at 30 or 240 fps.
 	 */
 	tickInterpolation(dtSec: number): void {
-		const alpha = 1 - Math.exp(-INTERP_RATE * dtSec);
+		const alpha = 1 - Math.exp(-this.interpRate * dtSec);
 		const p = this.mesh.position;
 		p.x += (this.target.x - p.x) * alpha;
 		p.y += (this.target.y - p.y) * alpha;

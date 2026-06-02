@@ -43,7 +43,7 @@ export class PlayerRegistry {
 			return existing;
 		}
 		const color = id === this.localSessionId ? this.config.localPlayerColor : this.config.remotePlayerColor;
-		const entity = new PlayerEntity(id, this.scene, color);
+		const entity = new PlayerEntity(id, this.scene, color, this.config.interpRate);
 		entity.snapTo(x, y, z);
 		this.entities.set(id, entity);
 		return entity;

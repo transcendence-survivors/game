@@ -8,5 +8,6 @@
 	"groundSize": 40,
 	"groundColor": "#374151",
 	"localPlayerColor": "#22c55e",
-	"remotePlayerColor": "#ef4444"
+	"remotePlayerColor": "#ef4444",
+	"interpRate": 30
 }

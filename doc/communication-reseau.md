@@ -19,9 +19,15 @@ serveur, pas un message de l'autre client.
 
 ```
  JOUEUR A ───input───▶  SERVEUR (autorité)  ───state───▶ JOUEUR A
- JOUEUR B ───input───▶  (simule à 30 Hz)    ───state───▶ JOUEUR B
+ JOUEUR B ───input───▶  (simule à 60 Hz)    ───state───▶ JOUEUR B
                                             ───state───▶ …
 ```
+
+> **Nuance importante (depuis l'ajout de la prédiction)** : le serveur reste
+> l'unique autorité, mais le client **prédit** désormais le déplacement
+> *horizontal* de son propre cube pour une réponse instantanée, puis se
+> *réconcilie* avec l'état autoritaire à chaque snapshot. Voir §4.7. Le cube des
+> **autres** joueurs, lui, reste purement « état reçu » (interpolé).
 
 ---
 
@@ -31,7 +37,7 @@ Colyseus offre **deux mécanismes distincts**, et le code utilise les deux :
 
 | Canal | Sens | Usage | Comment |
 |---|---|---|---|
-| **State sync** (schéma) | serveur → tous les clients | positions `x/y/z`, `latencyMs`, `tick` | **automatique** : Colyseus diffe l'état et n'envoie que les deltas |
+| **State sync** (schéma) | serveur → tous les clients | positions `x/y/z`, `latencyMs`, `lastSeq`, `tick` | **automatique** : Colyseus diffe l'état et n'envoie que les deltas |
 | **Messages** (hors-bande) | client ↔ serveur (ciblé) | `input`, `ping`/`pong`, `reportLatency` | **explicite** : `room.send(type, payload)` / `onMessage(...)` |
 
 Règle d'or — dans `server/src/schemas/Player.ts`, les champs décorés `@type(...)`
@@ -46,6 +52,7 @@ export class Player extends Schema {
   @type('number') y: number = 0;
   @type('number') z: number = 0;
   @type('number') latencyMs: number = 0;
+  @type('number') lastSeq: number = 0;  // dernier input acquitté (réconciliation)
 
   // -------------------------- Server-only state ---------------------------
   vx: number = 0;                  // vitesse : reste sur le serveur
@@ -81,7 +88,11 @@ export const ServerMessage = {
 ```
 
 Les **payloads** de ces messages sont typés dans
-`shared-package/src/types/messages.ts` (ex. `InputCommand { moveX, moveZ, jump }`).
+`shared-package/src/types/messages.ts` (ex.
+`InputCommand { moveX, moveZ, jump, seq }`). Le champ **`seq`** est un numéro de
+séquence monotone, incrémenté à chaque input envoyé : c'est lui qui permet la
+réconciliation de la prédiction (§4.7). Le serveur renvoie le dernier `seq`
+appliqué via `Player.lastSeq` (champ synchronisé).
 
 ---
 
@@ -153,16 +164,17 @@ C'est le cœur du sujet. Exemple : le joueur A appuie sur une touche.
  InputManager.snapshot()
         │
  RoomHandler send loop  ──input──▶ onMessage(Input)
-   (sendRateHz = 30Hz)             écrit player.inputMoveX/Z/Jump
-                                   (champ SERVER-ONLY)
-                                          │
-                                   tick 30Hz :
+   (sendRateHz = 60Hz)             écrit player.inputMoveX/Z/Jump + lastSeq
+        │ (+prédiction locale,     (champs SERVER-ONLY sauf lastSeq)
+        │  cube local du §4.7)            │
+                                   tick 60Hz :
                                      MovementSystem → vx/vz
                                      PhysicsSystem  → x/y/z (SYNC)
                                           │
                                    Colyseus diffe l'état ──state──▶ players.onChange
-                                                                     registry.update()
-                                                                     → le cube bouge
+                                    (patchRate 60Hz)                 registry.update()
+                                                                     → cube distant bouge
+                                                                     → cube local : réconcilié
 ```
 
 ### 4.1 — Le client capture l'input
@@ -178,20 +190,28 @@ snapshot(): InputCommand {
   const right    = this.heldKeys.has(this.controls.moveRight) ? 1 : 0;
   const jump = this.jumpQueued;
   this.jumpQueued = false;        // le saut est edge-triggered, consommé une fois
-  return { moveX: right - left, moveZ: forward - backward, jump };
+  this.seq += 1;                  // numéro de séquence monotone (réconciliation)
+  return { moveX: right - left, moveZ: forward - backward, jump, seq: this.seq };
 }
 ```
 
-### 4.2 — Le client envoie l'input (à rythme fixe)
+### 4.2 — Le client envoie l'input (à rythme fixe) **et le prédit**
 
 `RoomHandler` lance une boucle `setInterval` qui expédie le dernier snapshot à
-`sendRateHz` (= 30 Hz, `client/src/data/network.json`).
-**Le client n'applique rien localement** — il ne bouge pas son propre cube
-(`client/src/network/RoomHandler.ts`) :
+`sendRateHz` (= 60 Hz, `client/src/data/network.json`). Depuis l'ajout de la
+prédiction, il **applique aussi l'input immédiatement** au cube local pour que
+le mouvement soit instantané (détails en §4.7) —
+`client/src/network/RoomHandler.ts` :
 
 ```ts
 this.sendTimer = setInterval(() => {
-  this.room.send(ClientMessage.Input, this.input.snapshot());
+  const cmd = this.input.snapshot();
+  this.room.send(ClientMessage.Input, cmd);
+  // Prédiction : on avance le cube local tout de suite, sans attendre le serveur.
+  if (this.predictor.isReady) {
+    const p = this.predictor.applyInput(cmd);
+    this.registry.update(this.room.sessionId, p.x, p.y, p.z);
+  }
 }, this.sendIntervalMs);
 ```
 
@@ -208,17 +228,21 @@ private handleInput(client: Client, msg: InputCommand): void {
   player.inputMoveZ = msg.moveZ;
   // OR logique : ne jamais écraser un saut en attente avec `false`
   if (msg.jump) player.inputJump = true;
+  // Acquittement : on mémorise le dernier seq appliqué (sert à la réconciliation).
+  if (Number.isFinite(msg.seq) && msg.seq > player.lastSeq) player.lastSeq = msg.seq;
 }
 ```
 
 ### 4.4 — Le serveur simule (la boucle de tick)
 
 À la création de la room, on installe une boucle de simulation à `tickRate`
-(= 30 Hz, `server/src/data/room.json`) :
+(= 60 Hz, `server/src/data/room.json`) et on règle la fréquence de diffusion
+d'état `patchRate` (= 60 Hz ; défaut Colyseus = 20 Hz) :
 
 ```ts
 const tickMs = 1000 / this.config.room.tickRate;
 this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), tickMs);
+this.setPatchRate(1000 / this.config.room.patchRate);  // diffusion plus fréquente
 ```
 
 Chaque tick fait tourner le pipeline de systèmes :
@@ -258,11 +282,21 @@ const $ = getStateCallbacks(this.room);
 
 // un joueur apparaît → on crée son cube + on suit ses changements
 $(state).players.onAdd((player, sessionId) => {
+  const isLocal = sessionId === this.room.sessionId;
   this.registry.spawn(sessionId, player.x, player.y, player.z);
   this.panel.add(sessionId, player.latencyMs);
+  if (isLocal) this.predictor.init(player.x, player.y, player.z);  // graine de prédiction
 
   $(player).onChange(() => {
-    this.registry.update(sessionId, player.x, player.y, player.z); // déplace le cube
+    if (isLocal) {
+      // Notre cube : on RÉCONCILIE la prédiction au lieu de revenir brutalement
+      // à la position serveur (vieille d'un aller-retour) → pas de rubber-banding.
+      const p = this.predictor.reconcile(player.x, player.y, player.z, player.lastSeq);
+      this.registry.update(sessionId, p.x, p.y, p.z);
+    } else {
+      // Cube distant : on suit l'état reçu (interpolé par PlayerEntity).
+      this.registry.update(sessionId, player.x, player.y, player.z);
+    }
     this.panel.update(sessionId, player.latencyMs);
   });
 });
@@ -274,11 +308,52 @@ $(state).players.onRemove((_player, sessionId) => {
 });
 ```
 
-> **Point clé** : même le joueur A voit son propre cube bouger *uniquement*
-> quand l'état autoritaire revient du serveur (pas de prédiction côté client
-> dans cette version). A et B reçoivent exactement la même chose.
-> Donc « A communique avec B » = A → serveur (message `input`) puis
-> serveur → {A, B, …} (state sync). **Jamais A → B directement.**
+> **Note typage** : le client ne re-déclare pas les classes `@colyseus/schema`.
+> On décrit l'état structurellement (`GameStateView`, avec `players` typé comme
+> une collection) pour que le proxy `$()` expose `.onAdd`/`.onRemove` et
+> `.listen`/`.onChange` sans cast `as never`.
+
+> **Point clé** : « A communique avec B » = A → serveur (message `input`) puis
+> serveur → {A, B, …} (state sync). **Jamais A → B directement.** La prédiction
+> ne change pas ce principe : elle ne touche que l'affichage local du cube de A,
+> le serveur restant seul juge des positions réellement diffusées.
+
+---
+
+### 4.7 — Prédiction côté client + réconciliation (joueur local)
+
+Sans prédiction, le cube de A ne bougeait qu'une fois l'aller-retour complet
+effectué (input → tick serveur → patch → retour réseau) : ce délai **est** le
+temps de réaction ressenti. La prédiction le supprime.
+
+Le module `client/src/network/LocalPredictor.ts` :
+
+- **`applyInput(cmd)`** — à chaque input envoyé, avance *tout de suite* la
+  position locale (même calcul que `MovementSystem` : vitesse = input ×
+  `moveSpeed`) et bufferise l'input, tagué par son `seq`.
+- **`reconcile(x, y, z, lastSeq)`** — à chaque snapshot serveur : on jette les
+  inputs déjà appliqués (`seq <= lastSeq`), on repart de la position
+  **autoritaire**, puis on **rejoue** les inputs encore en attente. Résultat :
+  « là où le serveur sera une fois qu'il aura traité tout ce qu'on lui a déjà
+  envoyé » = le présent — sans rubber-banding.
+
+```ts
+reconcile(x, y, z, lastSeq) {
+  this.pending = this.pending.filter((cmd) => cmd.seq > lastSeq);  // drop acquittés
+  this.pos = { x, y, z };                                          // base autoritaire
+  for (const cmd of this.pending) this.step(cmd);                  // rejoue le reste
+  return this.pos;
+}
+```
+
+**Périmètre : horizontal (X/Z) uniquement.** Le `Y` (arc de saut) reste
+server-autoritaire et interpolé comme un joueur distant — le lag de hauteur est
+bien moins perceptible que le lag latéral, et le prédire imposerait au serveur
+de diffuser aussi la vitesse verticale pour réconcilier proprement.
+
+> `moveSpeed` doit être **identique** côté serveur (`server/src/data/physics.json`)
+> et côté client (`client/src/data/physics.json`). S'ils divergent, la
+> réconciliation corrigera visiblement la position à chaque snapshot.
 
 ---
 
@@ -342,15 +417,18 @@ Le ping illustre bien la cohabitation **message** + **state** :
 | Élément | Rôle |
 |---|---|
 | **`shared-package`** | Contrat commun (nom de room, noms/payloads de messages, vues d'état). Importé des deux côtés → zéro divergence. |
-| **Serveur** | Autorité unique. Reçoit des *intentions* (messages), simule à 30 Hz, mute l'état, laisse Colyseus diffuser. Aucune logique de gameplay dans la room : tout est dans `systems/` + `data/*.json`. |
-| **Client** | « Terminal » : capture l'input, l'envoie, et **rend** l'état reçu. Ne décide d'aucune position. |
+| **Serveur** | Autorité unique. Reçoit des *intentions* (messages), simule à 60 Hz, mute l'état, laisse Colyseus diffuser (60 Hz). Aucune logique de gameplay dans la room : tout est dans `systems/` + `data/*.json`. |
+| **Client** | Capture l'input, l'envoie, **rend** l'état reçu. Pour son **propre** cube, il prédit le déplacement horizontal et se réconcilie ; pour les **autres**, il interpole l'état autoritaire. Le serveur reste seul juge des positions diffusées. |
 
 ### Rythmes en jeu
 
 | Paramètre | Valeur | Fichier | Rôle |
 |---|---|---|---|
-| `tickRate` | 30 Hz | `server/src/data/room.json` | fréquence de simulation serveur |
-| `sendRateHz` | 30 Hz | `client/src/data/network.json` | fréquence d'envoi des inputs |
+| `tickRate` | 60 Hz | `server/src/data/room.json` | fréquence de simulation serveur |
+| `patchRate` | 60 Hz | `server/src/data/room.json` | fréquence de diffusion d'état (défaut Colyseus : 20 Hz) |
+| `sendRateHz` | 60 Hz | `client/src/data/network.json` | fréquence d'envoi des inputs (= pas de prédiction) |
+| `interpRate` | 30 | `client/src/data/render.json` | vitesse de convergence de l'interpolation visuelle |
+| `moveSpeed` | 6 m/s | `client/src/data/physics.json` ↔ `server/src/data/physics.json` | vitesse horizontale (doit être identique des deux côtés) |
 | `pingIntervalMs` | 2000 ms | `client/src/data/network.json` | fréquence des sondes de latence |
 | `maxPlayers` | 2 | `server/src/data/room.json` | capacité de la room |
 

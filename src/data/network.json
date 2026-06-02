@@ -1,5 +1,5 @@
 {
 	"endpoint": "ws://localhost:4000",
-	"sendRateHz": 30,
+	"sendRateHz": 60,
 	"pingIntervalMs": 2000
 }

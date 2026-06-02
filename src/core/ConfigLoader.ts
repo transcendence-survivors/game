@@ -10,6 +10,7 @@
 
 import controls from '../data/controls.json' with { type: 'json' };
 import network from '../data/network.json' with { type: 'json' };
+import physics from '../data/physics.json' with { type: 'json' };
 import render from '../data/render.json' with { type: 'json' };
 
 /** Keyboard `KeyboardEvent.code` for each action. */
@@ -39,6 +40,12 @@ export interface RenderConfig {
 	readonly groundColor: string;
 	readonly localPlayerColor: string;
 	readonly remotePlayerColor: string;
+	/**
+	 * Convergence rate (per second) of the snapshot-position lerp. Higher =
+	 * snappier but closer to a raw snap; lower = smoother but more visibly
+	 * lagging behind the server.
+	 */
+	readonly interpRate: number;
 }
 
 /** Network endpoint + outbound input rate. */
@@ -49,10 +56,23 @@ export interface NetworkConfig {
 	readonly pingIntervalMs: number;
 }
 
+/**
+ * Client-side mirror of the server gameplay constants needed for prediction.
+ *
+ * These MUST match the server's `physics.json` — if they drift, the client's
+ * predicted motion will diverge from the authoritative simulation and the
+ * reconciliation will visibly correct it every snapshot.
+ */
+export interface PhysicsConfig {
+	/** Horizontal speed when an axis is fully held (m/s). Mirrors server. */
+	readonly moveSpeed: number;
+}
+
 export interface ClientConfig {
 	readonly controls: ControlsConfig;
 	readonly render: RenderConfig;
 	readonly network: NetworkConfig;
+	readonly physics: PhysicsConfig;
 }
 
 let cached: ClientConfig | null = null;
@@ -78,6 +98,7 @@ export function loadConfig(): ClientConfig {
 		controls: Object.freeze({ ...controls }),
 		render: Object.freeze({ ...render }),
 		network: Object.freeze(finalNetwork),
+		physics: Object.freeze({ ...physics }),
 	});
 	return cached;
 }

@@ -16,6 +16,8 @@ export class InputManager {
 	private readonly controls: ControlsConfig;
 	private readonly heldKeys = new Set<string>();
 	private jumpQueued = false;
+	/** Monotonic counter stamped onto every {@link snapshot}; see InputCommand.seq. */
+	private seq = 0;
 
 	constructor(controls: ControlsConfig) {
 		this.controls = controls;
@@ -33,6 +35,7 @@ export class InputManager {
 		window.removeEventListener('keyup', this.onKeyUp);
 		this.heldKeys.clear();
 		this.jumpQueued = false;
+		this.seq = 0;
 	}
 
 	/** Build an {@link InputCommand} reflecting the current input state. */
@@ -43,10 +46,12 @@ export class InputManager {
 		const right = this.heldKeys.has(this.controls.moveRight) ? 1 : 0;
 		const jump = this.jumpQueued;
 		this.jumpQueued = false;
+		this.seq += 1;
 		return {
 			moveX: right - left,
 			moveZ: forward - backward,
 			jump,
+			seq: this.seq,
 		};
 	}
 

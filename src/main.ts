@@ -21,6 +21,7 @@ import { PlayerRegistry } from './entities/PlayerRegistry';
 import { InputManager } from './input/InputManager';
 import { UiHotkeys } from './input/UiHotkeys';
 import { LatencyTracker } from './network/LatencyTracker';
+import { LocalPredictor } from './network/LocalPredictor';
 import { NetworkClient } from './network/NetworkClient';
 import { RoomHandler } from './network/RoomHandler';
 import { createGameScene } from './scenes/GameScene';
@@ -59,7 +60,8 @@ async function bootstrap(): Promise<void> {
 	const latency = new LatencyTracker(room, config.network.pingIntervalMs);
 	latency.attach();
 
-	const handler = new RoomHandler(room, registry, panel, input, config.network.sendRateHz);
+	const predictor = new LocalPredictor(config.physics.moveSpeed, config.network.sendRateHz);
+	const handler = new RoomHandler(room, registry, panel, input, predictor, config.network.sendRateHz);
 	handler.attach();
 
 	const stats = new StatsSampler(
