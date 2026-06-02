@@ -75,6 +75,23 @@ export interface ClientConfig {
 	readonly physics: PhysicsConfig;
 }
 
+/**
+ * Resolve the game-server endpoint when no explicit `VITE_GAME_SOCKET_URL` is
+ * set. In a browser, reuse the host the page was served from and keep the port
+ * declared in the JSON config — so a client opened at `http://<host>:5173`
+ * connects to `ws://<host>:4000` with no hardcoded IP, even when that host's
+ * address changes between sessions. Outside a browser (tests) the JSON value
+ * is used verbatim.
+ */
+function deriveEndpoint(jsonEndpoint: string): string {
+	if (typeof window === 'undefined') {
+		return jsonEndpoint;
+	}
+	const port = new URL(jsonEndpoint).port || '4000';
+	const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+	return `${scheme}://${window.location.hostname}:${port}`;
+}
+
 let cached: ClientConfig | null = null;
 
 /**
@@ -91,7 +108,10 @@ export function loadConfig(): ClientConfig {
 	const envEndpoint = import.meta.env.VITE_GAME_SOCKET_URL as string | undefined;
 	// `||` falls back on both undefined and an empty string; the spread carries
 	// over every other network field automatically.
-	const finalNetwork: NetworkConfig = { ...network, endpoint: envEndpoint || network.endpoint };
+	const finalNetwork: NetworkConfig = {
+		...network,
+		endpoint: envEndpoint || deriveEndpoint(network.endpoint),
+	};
 	cached = Object.freeze({
 		controls: Object.freeze({ ...controls }),
 		render: Object.freeze({ ...render }),
