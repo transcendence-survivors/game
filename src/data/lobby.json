@@ -1,0 +1,6 @@
+{
+	"maxPlayerNameLength": 16,
+	"maxRoomNameLength": 24,
+	"minPasswordLength": 4,
+	"maxPasswordLength": 64
+}

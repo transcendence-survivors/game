@@ -9,6 +9,7 @@
  */
 
 import controls from '../data/controls.json' with { type: 'json' };
+import lobby from '../data/lobby.json' with { type: 'json' };
 import network from '../data/network.json' with { type: 'json' };
 import physics from '../data/physics.json' with { type: 'json' };
 import render from '../data/render.json' with { type: 'json' };
@@ -68,11 +69,24 @@ export interface PhysicsConfig {
 	readonly moveSpeed: number;
 }
 
+/**
+ * Menu / lobby UI input limits. They mirror the server's `room.json` so the
+ * client rejects over-long names before they reach matchmaking; the server
+ * stays authoritative and re-sanitizes regardless.
+ */
+export interface LobbyConfig {
+	readonly maxPlayerNameLength: number;
+	readonly maxRoomNameLength: number;
+	readonly minPasswordLength: number;
+	readonly maxPasswordLength: number;
+}
+
 export interface ClientConfig {
 	readonly controls: ControlsConfig;
 	readonly render: RenderConfig;
 	readonly network: NetworkConfig;
 	readonly physics: PhysicsConfig;
+	readonly lobby: LobbyConfig;
 }
 
 /**
@@ -117,6 +131,7 @@ export function loadConfig(): ClientConfig {
 		render: Object.freeze({ ...render }),
 		network: Object.freeze(finalNetwork),
 		physics: Object.freeze({ ...physics }),
+		lobby: Object.freeze({ ...lobby }),
 	});
 	return cached;
 }

@@ -1,12 +1,16 @@
 /**
- * @file Browser entry point.
+ * @file Browser entry point — the screen-flow controller.
  *
- * Boot sequence:
- *   1. Load configs (controls, render, network).
- *   2. Build the Babylon engine + game scene.
- *   3. Connect to the Colyseus server, join the canonical room.
- *   4. Wire input, hotkeys, latency tracker, panel and room handler.
- *   5. Start the render loop.
+ * Flow:
+ *   Menu  ──create/join──▶  Lobby  ──phase: playing──▶  In-game (Babylon)
+ *     ▲                       │
+ *     └──────leave / kicked───┘
+ *
+ * The Babylon engine boots immediately on a lightweight {@link createMenuScene |
+ * menu scene} and a fullscreen GUI texture carries the menu + lobby (same
+ * rendering pipeline as the in-game LatencyPanel). Only when the room's phase
+ * flips to `playing` do we swap the engine onto the real game scene (see
+ * `game/InGame.ts`), which disposes the menu scene and its GUI automatically.
  *
  * Anything that fails during boot is rendered into the page as a fallback
  * message — silent failures behind a black canvas are the worst dev experience.
@@ -14,87 +18,98 @@
 
 import './global.css';
 
+import type { Room } from 'colyseus.js';
+import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
+
 import { loadConfig } from './core/ConfigLoader';
 import { GameEngine } from './core/Engine';
-import { StatsSampler } from './core/StatsSampler';
-import { PlayerRegistry } from './entities/PlayerRegistry';
-import { InputManager } from './input/InputManager';
-import { UiHotkeys } from './input/UiHotkeys';
-import { LatencyTracker } from './network/LatencyTracker';
-import { LocalPredictor } from './network/LocalPredictor';
+import { startInGame } from './game/InGame';
 import { NetworkClient } from './network/NetworkClient';
-import { RoomHandler } from './network/RoomHandler';
-import { createGameScene } from './scenes/GameScene';
-import { LatencyPanel } from './ui/LatencyPanel';
+import { createMenuScene } from './scenes/MenuScene';
+import { LobbyScreen } from './ui/LobbyScreen';
+import { MenuScreen } from './ui/MenuScreen';
 
-async function bootstrap(): Promise<void> {
+function bootstrap(): void {
 	const canvas = document.querySelector<HTMLCanvasElement>('#game');
 	if (canvas === null) {
 		throw new Error('[main] #game canvas not found in index.html');
 	}
 
 	const config = loadConfig();
-	console.log(
-		`[client] config — endpoint=${config.network.endpoint}, sendRate=${config.network.sendRateHz}Hz, ping=${config.network.pingIntervalMs}ms`,
-	);
+	console.log(`[client] config — endpoint=${config.network.endpoint}`);
 
+	// Engine + menu scene + fullscreen GUI, all live for the menu/lobby phase.
 	const engine = new GameEngine(canvas);
-	const scene = createGameScene(engine, config.render);
-	engine.setScene(scene);
+	const menuScene = createMenuScene(engine, config.render);
+	engine.setScene(menuScene);
+	engine.start();
+	const ui = AdvancedDynamicTexture.CreateFullscreenUI('menu-ui', true, menuScene);
 
 	const network = new NetworkClient(config.network.endpoint);
-	const room = await network.joinGame();
-	console.log(`[client] joined room "${room.name}" as ${room.sessionId}`);
 
-	const registry = new PlayerRegistry(scene, config.render, room.sessionId);
-	const panel = new LatencyPanel(scene, room.sessionId);
+	// Holds whatever needs tearing down for the *current* screen so a transition
+	// (or tab close) never leaks listeners or room subscriptions.
+	let teardown: (() => void) | null = null;
+	const clearTeardown = (): void => {
+		teardown?.();
+		teardown = null;
+	};
 
-	const input = new InputManager(config.controls);
-	input.attach();
+	const showMenu = (): void => {
+		clearTeardown();
+		const menu = new MenuScreen({
+			ui,
+			network,
+			config: config.lobby,
+			onEnterRoom: (room) => showLobby(room),
+		});
+		menu.mount();
+		teardown = () => menu.dispose();
+	};
 
-	const hotkeys = new UiHotkeys({ togglePanel: config.controls.togglePanel }, () =>
-		panel.toggle(),
-	);
-	hotkeys.attach();
+	const showLobby = (room: Room): void => {
+		clearTeardown();
+		const lobby = new LobbyScreen({
+			ui,
+			room,
+			onStart: (started) => showGame(started),
+			onKicked: (reason) => {
+				console.log(`[client] kicked: ${reason}`);
+				void room.leave();
+				showMenu();
+			},
+			onLeave: () => {
+				void room.leave();
+				showMenu();
+			},
+		});
+		lobby.mount();
+		teardown = () => lobby.dispose();
+	};
 
-	const latency = new LatencyTracker(room, config.network.pingIntervalMs);
-	latency.attach();
+	const showGame = (room: Room): void => {
+		// Remove the lobby GUI (keep the room — it's now the game's transport),
+		// then boot the 3D game, which swaps the engine onto the game scene.
+		clearTeardown();
+		teardown = startInGame(engine, room, config);
+	};
 
-	const predictor = new LocalPredictor(config.physics.moveSpeed, config.network.sendRateHz);
-	const handler = new RoomHandler(room, registry, panel, input, predictor, config.network.sendRateHz);
-	handler.attach();
-
-	const stats = new StatsSampler(
-		engine,
-		() => (room.state as { tick: number }).tick,
-		{
-			onFps: (fps) => panel.setClientFps(fps),
-			onTps: (tps) => panel.setServerTps(tps),
-		},
-		{ intervalMs: 500 },
-	);
-	stats.attach();
-
-	engine.start();
+	showMenu();
 
 	// Cleanup on hot-reload (Vite) or tab close.
 	window.addEventListener('beforeunload', () => {
-		stats.detach();
-		latency.detach();
-		void handler.detach();
-		hotkeys.detach();
-		input.detach();
-		registry.dispose();
-		panel.dispose();
+		clearTeardown();
 		engine.dispose();
 	});
 }
 
-bootstrap().catch((err: unknown) => {
+try {
+	bootstrap();
+} catch (err: unknown) {
 	const message = err instanceof Error ? err.message : String(err);
 	console.error('[client] bootstrap failed', err);
 	document.body.insertAdjacentHTML(
 		'beforeend',
 		`<pre style="position:fixed;inset:1rem;background:#000c;color:#f87171;padding:1rem;font:14px monospace;white-space:pre-wrap;z-index:9999">Boot error: ${message}</pre>`,
 	);
-});
+}
