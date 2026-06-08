@@ -1,13 +1,3 @@
-/**
- * @file Babylon GUI theme + small control factories for the menu / lobby.
- *
- * Centralises the visual language so {@link MenuScreen} and {@link LobbyScreen}
- * stay declarative and consistent with the in-scene {@link LatencyPanel} (same
- * Tailwind slate + indigo palette). Every screen control is built here so a
- * restyle is a one-file change — the same discipline the rest of the client
- * follows for gameplay constants in JSON.
- */
-
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
@@ -48,18 +38,6 @@ const CARD_WIDTH_PX = 480;
 const CARD_PADDING_PX = 32;
 const CARD_BODY_WIDTH_PX = CARD_WIDTH_PX - CARD_PADDING_PX * 2;
 
-/**
- * A vertical "card" container, centred on screen and height-fitted to content.
- *
- * Padding is achieved structurally rather than via Babylon's `padding`
- * properties (which interact unreliably with `adaptHeightToChildren`): the body
- * is a fixed-width stack centred inside a wider card (horizontal padding), and a
- * spacer is prepended (top padding). Each screen ends its content with
- * {@link endCard} to add the matching bottom padding.
- *
- * Returns the inner {@link StackPanel} to which rows are appended; the outer
- * rounded rectangle is its parent (accessible via `body.parent`).
- */
 export function card(name: string): StackPanel {
 	const root = new Rectangle(`${name}-card`);
 	root.width = `${CARD_WIDTH_PX}px`;
@@ -148,7 +126,11 @@ export function errorLine(): TextBlock {
 }
 
 /** Common styling for the text/password inputs, with a live length cap. */
-function styleInput(input: InputText, placeholder: string, maxLength: number): void {
+function styleInput(
+	input: InputText,
+	placeholder: string,
+	maxLength: number,
+): void {
 	input.width = '100%';
 	input.height = '42px';
 	input.fontSize = 15;
@@ -175,7 +157,10 @@ export function textInput(placeholder: string, maxLength: number): InputText {
 }
 
 /** A masked password input. */
-export function passwordInput(placeholder: string, maxLength: number): InputPassword {
+export function passwordInput(
+	placeholder: string,
+	maxLength: number,
+): InputPassword {
 	const input = new InputPassword();
 	styleInput(input, placeholder, maxLength);
 	return input;
@@ -193,7 +178,10 @@ function buttonBg(variant: ButtonVariant): string {
 }
 
 /** A full-width button. Wire clicks via `onPointerClickObservable`. */
-export function button(text: string, variant: ButtonVariant = 'primary'): Button {
+export function button(
+	text: string,
+	variant: ButtonVariant = 'primary',
+): Button {
 	const b = Button.CreateSimpleButton(`btn-${text}`, text);
 	b.width = '100%';
 	b.height = '44px';
@@ -205,7 +193,8 @@ export function button(text: string, variant: ButtonVariant = 'primary'): Button
 		b.textBlock.fontFamily = FONT;
 		b.textBlock.fontSize = 15;
 		b.textBlock.fontWeight = '600';
-		b.textBlock.color = variant === 'ghost' ? Palette.textPrimary : Palette.white;
+		b.textBlock.color =
+			variant === 'ghost' ? Palette.textPrimary : Palette.white;
 	}
 	return b;
 }

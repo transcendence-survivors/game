@@ -1,21 +1,3 @@
-/**
- * @file In-scene network status overlay (latency per player + server tick).
- *
- * Rendered entirely with Babylon GUI so it ships with the canvas: screenshots,
- * fullscreen and future post-processing all keep it visible.
- *
- * Visual language:
- *  - Dark slate background with a thin indigo accent border.
- *  - Each player row is a Grid: status dot, name, mini latency bar, value.
- *  - The bar represents *connection quality* (full = healthy), so the eye
- *    instantly maps "more colored" to "better".
- *  - Server tick lives in a footer with a top divider — separates the
- *    per-player block from the global state.
- *  - Show / hide is animated (alpha fade) for a less jarring toggle.
- *
- * The panel is hidden by default; `UiHotkeys` drives `toggle()`.
- */
-
 import type { Observer } from '@babylonjs/core/Misc/observable';
 import type { Scene } from '@babylonjs/core/scene';
 import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
@@ -143,7 +125,11 @@ export class LatencyPanel {
 		this.scene = scene;
 		this.localSessionId = localSessionId;
 
-		this.ui = AdvancedDynamicTexture.CreateFullscreenUI('latencyUI', true, scene);
+		this.ui = AdvancedDynamicTexture.CreateFullscreenUI(
+			'latencyUI',
+			true,
+			scene,
+		);
 
 		this.root = new Rectangle('latencyPanel');
 		this.root.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -196,7 +182,9 @@ export class LatencyPanel {
 
 		stack.addControl(this.buildSpacer(PANEL_PADDING_Y_PX));
 
-		this.renderObserver = scene.onBeforeRenderObservable.add(() => this.tickFade());
+		this.renderObserver = scene.onBeforeRenderObservable.add(() =>
+			this.tickFade(),
+		);
 	}
 
 	add(sessionId: string, latencyMs: number): void {
@@ -387,7 +375,12 @@ export class LatencyPanel {
 		panel.addControl(tps.root);
 		panel.addControl(fps.root);
 
-		return { root: panel, tick: tick.value, tps: tps.value, fps: fps.value };
+		return {
+			root: panel,
+			tick: tick.value,
+			tps: tps.value,
+			fps: fps.value,
+		};
 	}
 
 	private buildFooterRow(
@@ -458,6 +451,8 @@ export class LatencyPanel {
 
 	private formatTick(tick: number): string {
 		// Thousands separators read better at high values; locale-independent.
-		return Math.floor(tick).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+		return Math.floor(tick)
+			.toString()
+			.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 	}
 }

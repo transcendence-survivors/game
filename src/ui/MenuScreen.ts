@@ -1,17 +1,3 @@
-/**
- * @file Main menu, drawn with Babylon GUI onto a shared fullscreen texture.
- *
- * Same flow as before — pick a pseudonym, then create / find / join a game —
- * but rendered with `AdvancedDynamicTexture` controls so it shares the canvas
- * pipeline and visual language with the in-scene {@link LatencyPanel}, instead
- * of a separate DOM overlay.
- *
- * Views: `home` → `create` | `find` | `joinPrivate`. The `find` view subscribes
- * to the live public-room directory via {@link NetworkClient.joinLobby} and
- * tears that subscription down whenever it leaves the view. On a successful
- * create/join it hands the room to {@link MenuOptions.onEnterRoom}.
- */
-
 import type { Room } from 'colyseus.js';
 import type { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
 import type { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
@@ -20,7 +6,12 @@ import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
-import { RoomMode, RoomPhase, type RoomListItem, type RoomModeName } from '@transcendence/game-shared';
+import {
+	RoomMode,
+	RoomPhase,
+	type RoomListItem,
+	type RoomModeName,
+} from '@transcendence/game-shared';
 
 import type { LobbyConfig } from '../core/ConfigLoader';
 import type { NetworkClient } from '../network/NetworkClient';
@@ -123,7 +114,11 @@ export class MenuScreen {
 		const body = card('menu-home');
 		body.addControl(centered(heading('Transcendence Survivors')));
 		gap(body, 2);
-		body.addControl(centered(subtitle('Create a game or join one — then ready up to start.')));
+		body.addControl(
+			centered(
+				subtitle('Create a game or join one — then ready up to start.'),
+			),
+		);
 		gap(body, 22);
 		body.addControl(label('Your name'));
 		gap(body, 4);
@@ -151,9 +146,15 @@ export class MenuScreen {
 		this.setRoot(body.parent as Control);
 		this.error = err;
 
-		create.onPointerClickObservable.add(() => this.guardName(() => this.renderCreate()));
-		find.onPointerClickObservable.add(() => this.guardName(() => this.renderFind()));
-		joinPriv.onPointerClickObservable.add(() => this.guardName(() => this.renderJoinPrivate()));
+		create.onPointerClickObservable.add(() =>
+			this.guardName(() => this.renderCreate()),
+		);
+		find.onPointerClickObservable.add(() =>
+			this.guardName(() => this.renderFind()),
+		);
+		joinPriv.onPointerClickObservable.add(() =>
+			this.guardName(() => this.renderJoinPrivate()),
+		);
 	}
 
 	/**
@@ -187,7 +188,10 @@ export class MenuScreen {
 		modes.width = '100%';
 		modes.addColumnDefinition(0.5);
 		modes.addColumnDefinition(0.5);
-		const publicBtn = button('Public', this.createMode === RoomMode.Public ? 'primary' : 'ghost');
+		const publicBtn = button(
+			'Public',
+			this.createMode === RoomMode.Public ? 'primary' : 'ghost',
+		);
 		const privateBtn = button('Private', isPrivate ? 'primary' : 'ghost');
 		publicBtn.width = '94%';
 		privateBtn.width = '94%';
@@ -199,7 +203,9 @@ export class MenuScreen {
 		gap(body, 14);
 
 		if (isPrivate) {
-			body.addControl(label(`Password (min ${this.config.minPasswordLength})`));
+			body.addControl(
+				label(`Password (min ${this.config.minPasswordLength})`),
+			);
 			gap(body, 4);
 			const pw = passwordInput('••••', this.config.maxPasswordLength);
 			pw.text = this.createPassword;
@@ -239,7 +245,9 @@ export class MenuScreen {
 		const body = card('menu-find');
 		body.addControl(centered(heading('Find a game online')));
 		gap(body, 2);
-		body.addControl(centered(subtitle('Live list — public games waiting for players.')));
+		body.addControl(
+			centered(subtitle('Live list — public games waiting for players.')),
+		);
 		gap(body, 16);
 
 		const scroll = new ScrollViewer('room-scroll');
@@ -276,7 +284,10 @@ export class MenuScreen {
 		gap(body, 20);
 		body.addControl(label('Game name'));
 		gap(body, 4);
-		const roomName = textInput('Exact game name', this.config.maxRoomNameLength);
+		const roomName = textInput(
+			'Exact game name',
+			this.config.maxRoomNameLength,
+		);
 		body.addControl(roomName);
 		gap(body, 14);
 		body.addControl(label('Password'));
@@ -297,7 +308,9 @@ export class MenuScreen {
 		this.setRoot(body.parent as Control);
 		this.error = err;
 
-		submit.onPointerClickObservable.add(() => void this.submitJoinPrivate(roomName.text.trim(), pw.text));
+		submit.onPointerClickObservable.add(
+			() => void this.submitJoinPrivate(roomName.text.trim(), pw.text),
+		);
 		back.onPointerClickObservable.add(() => this.renderHome());
 	}
 
@@ -372,7 +385,9 @@ export class MenuScreen {
 		row.paddingTop = '4px';
 		row.paddingBottom = '4px';
 
-		const info = subtitle(`${room.roomName}  —  ${room.clients}/${room.maxClients}`);
+		const info = subtitle(
+			`${room.roomName}  —  ${room.clients}/${room.maxClients}`,
+		);
 		info.color = Palette.textPrimary;
 		info.paddingLeft = '12px';
 		info.width = '60%';
@@ -384,7 +399,9 @@ export class MenuScreen {
 		join.height = '34px';
 		join.horizontalAlignment = 1; // right
 		join.paddingRight = '10px';
-		join.onPointerClickObservable.add(() => void this.submitJoinPublic(room.roomId));
+		join.onPointerClickObservable.add(
+			() => void this.submitJoinPublic(room.roomId),
+		);
 		row.addControl(join);
 		return row;
 	}
@@ -400,7 +417,9 @@ export class MenuScreen {
 		}
 		const isPrivate = this.createMode === RoomMode.Private;
 		if (isPrivate && password.length < this.config.minPasswordLength) {
-			this.setError(`Password must be at least ${this.config.minPasswordLength} characters.`);
+			this.setError(
+				`Password must be at least ${this.config.minPasswordLength} characters.`,
+			);
 			return;
 		}
 		await this.enter(() =>
@@ -414,15 +433,22 @@ export class MenuScreen {
 	}
 
 	private async submitJoinPublic(roomId: string): Promise<void> {
-		await this.enter(() => this.network.joinPublic(roomId, this.playerName));
+		await this.enter(() =>
+			this.network.joinPublic(roomId, this.playerName),
+		);
 	}
 
-	private async submitJoinPrivate(roomName: string, password: string): Promise<void> {
+	private async submitJoinPrivate(
+		roomName: string,
+		password: string,
+	): Promise<void> {
 		if (roomName.length === 0 || password.length === 0) {
 			this.setError('Enter both the game name and password.');
 			return;
 		}
-		await this.enter(() => this.network.joinPrivate(roomName, password, this.playerName));
+		await this.enter(() =>
+			this.network.joinPrivate(roomName, password, this.playerName),
+		);
 	}
 
 	/** Run a join/create thunk, hand the room to the host on success. */
@@ -468,4 +494,3 @@ export class MenuScreen {
 		return raw || 'Something went wrong. Try again.';
 	}
 }
-

@@ -38,7 +38,9 @@ export class LatencyTracker {
 
 	/** Subscribe to Pong messages and start the probe loop. */
 	attach(): void {
-		this.room.onMessage(ServerMessage.Pong, (msg: PongPayload) => this.handlePong(msg));
+		this.room.onMessage(ServerMessage.Pong, (msg: PongPayload) =>
+			this.handlePong(msg),
+		);
 		this.timer = setInterval(() => this.sendPing(), this.intervalMs);
 		// Fire one immediately so the panel has a value within the first interval.
 		this.sendPing();
