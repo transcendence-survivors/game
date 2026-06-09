@@ -1,56 +1,11 @@
-import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
-import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { Scene } from '@babylonjs/core/scene';
+import type { Camera, Engine, GroundMesh, Light, Scene } from '@babylonjs/core';
 
-import type { GameEngine } from '../core/Engine';
-import type { RenderConfig } from '../core/ConfigLoader';
+export class GameScene {
+	private scene: Scene;
+	private engine: Engine;
+	private camera: Camera;
+	private light: Light;
+	private ground: GroundMesh;
 
-export function createGameScene(
-	engine: GameEngine,
-	config: RenderConfig,
-): Scene {
-	const scene = new Scene(engine.raw);
-	scene.clearColor = Color4.FromHexString(ensureHex(config.clearColor));
-
-	new HemisphericLight('ambient', new Vector3(0, 1, 0), scene).intensity =
-		config.ambientIntensity;
-
-	const camera = new ArcRotateCamera(
-		'camera',
-		config.cameraAlpha,
-		config.cameraBeta,
-		config.cameraRadius,
-		new Vector3(0, config.cameraTargetY, 0),
-		scene,
-	);
-	camera.attachControl(engine.canvasElement, true);
-	camera.lowerRadiusLimit = 4;
-	camera.upperRadiusLimit = 40;
-
-	const ground = CreateGround(
-		'ground',
-		{ width: config.groundSize, height: config.groundSize },
-		scene,
-	);
-	const groundMat = new StandardMaterial('groundMat', scene);
-	groundMat.diffuseColor = Color3.FromHexString(
-		ensureHex(config.groundColor),
-	);
-	groundMat.specularColor = new Color3(0.1, 0.1, 0.1);
-	ground.material = groundMat;
-
-	return scene;
-}
-
-function ensureHex(hex: string): string {
-	if (!/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(hex)) {
-		throw new Error(
-			`[GameScene] Invalid hex color "${hex}" (expected #RRGGBB or #RRGGBBAA)`,
-		);
-	}
-	return hex;
+	constructor(engine: Engine) {}
 }
