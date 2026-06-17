@@ -2,27 +2,34 @@ import type { Engine, Light, Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from 'colyseus.js';
-import networkSettings from '../data/network.json';
+import '@babylonjs/loaders/glTF/2.0';
+import { InputManager } from '../InputManager';
 
 export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
-	private camera!: BABYLON.ArcRotateCamera; // Subject to change
+	private camera!: BABYLON.FollowCamera;
 	private light!: Light;
 	private ground!: BABYLON.Mesh;
 	private colyseusSDK!: COLYSEUS.Client;
 	private uiText!: GUI.TextBlock;
+	private input!: InputManager;
+	private player!: BABYLON.AbstractMesh;
+
+	private walkAnim!: BABYLON.AnimationGroup;
 
 	constructor(engine: Engine) {
 		this.engine = engine;
 		this.init();
 	}
 
-	init() {
+	async init() {
 		this.createScene();
-		this.initGUI();
+		// this.initGUI();
 		// this.connectToServer();
-		this.addPlayer();
+		await this.addPlayer();
+		this.input = new InputManager(this.scene);
+		this.initInput();
 	}
 
 	getScene() {
@@ -31,15 +38,17 @@ export class GameScene {
 
 	createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		this.camera = new BABYLON.ArcRotateCamera(
-			'Camera',
-			Math.PI / 2,
-			1.0,
-			550,
-			BABYLON.Vector3.Zero(),
+		this.camera = new BABYLON.FollowCamera(
+			'Player-Camera',
+			new BABYLON.Vector3(0, 0, 0),
 			this.scene,
 		);
-		this.camera.setTarget(BABYLON.Vector3.Zero());
+		this.camera.radius = 5;
+		this.camera.heightOffset = 6;
+		this.camera.rotationOffset = 180;
+		this.camera.cameraAcceleration = 0.05;
+		this.camera.maxCameraSpeed = 2;
+		this.camera.attachControl(true);
 		this.light = new BABYLON.HemisphericLight(
 			'Light',
 			new BABYLON.Vector3(0, 1, 0),
@@ -48,20 +57,66 @@ export class GameScene {
 		this.light.intensity = 0.7;
 		this.ground = BABYLON.MeshBuilder.CreatePlane(
 			'ground',
-			{ size: 500 },
+			{ size: 20 },
 			this.scene,
 		);
-		this.ground.position.y = -15;
+		this.ground.position.y = 0;
 		this.ground.rotation.x = Math.PI / 2;
 		return this.scene;
 	}
 
+	initInput() {
+		this.scene.onBeforeRenderObservable.add(() => {
+			let moving = false;
+			if (this.input.isPressed('w')) {
+				this.player.translate(BABYLON.Axis.Z, 0.1, BABYLON.Space.LOCAL);
+				moving = true;
+			}
+			if (this.input.isPressed('s')) {
+				this.player.translate(
+					BABYLON.Axis.Z,
+					-0.1,
+					BABYLON.Space.LOCAL,
+				);
+				moving = true;
+			}
+			if (this.input.isPressed('d')) {
+				this.player.rotate(BABYLON.Axis.Y, 0.05, BABYLON.Space.LOCAL);
+				moving = true;
+			}
+			if (this.input.isPressed('a')) {
+				this.player.rotate(BABYLON.Axis.Y, -0.05, BABYLON.Space.LOCAL);
+				moving = true;
+			}
+			if (moving) this.walkAnim.play();
+			if (
+				this.input.isReleased('w') &&
+				this.input.isReleased('s') &&
+				this.input.isReleased('a') &&
+				this.input.isReleased('d')
+			) {
+				this.walkAnim.stop();
+				moving = false;
+			}
+			console.log(`Player x: ${this.player.position.x}`);
+			console.log(`Player y: ${this.player.position.y}`);
+		});
+	}
+
 	async addPlayer() {
-		const player = await BABYLON.ImportMeshAsync(
+		const result = await BABYLON.ImportMeshAsync(
 			'/models/bomb.glb',
 			this.scene,
 		);
-		console.log(player);
+		const model = result.meshes[0];
+		model.position = new BABYLON.Vector3(0, 0, 0);
+		model.scaling = new BABYLON.Vector3(1, 1, 1);
+		model.isVisible = true;
+		this.camera.lockedTarget = model;
+		this.player = model;
+		this.walkAnim = result.animationGroups[0];
+		console.log(result);
+		this.walkAnim.stop();
 	}
 
 	async connectToServer() {
@@ -82,7 +137,7 @@ export class GameScene {
 		const advancedTexture =
 			GUI.AdvancedDynamicTexture.CreateFullscreenUI('textUI');
 		this.uiText = new GUI.TextBlock('instructions');
-		this.uiText.text = 'Je deteste Benoit Cabocel';
+		this.uiText.text = 'LongLiveTheKing';
 		this.uiText.color = '#f0ff00';
 		this.uiText.fontFamily = 'Roboto';
 		this.uiText.fontSize = 48;
