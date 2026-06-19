@@ -5,7 +5,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     server: {
+      host: "0.0.0.0",
       port: Number(env.PORT) || 5173,
+      proxy: {
+        "/colyseus": {
+          target: "http://game-server:4000",
+          changeOrigin: true,
+          ws: true,
+        },
+      },
     },
   }
 })

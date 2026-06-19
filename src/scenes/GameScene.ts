@@ -4,6 +4,7 @@ import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from 'colyseus.js';
 import '@babylonjs/loaders/glTF/2.0';
 import { InputManager } from '../InputManager';
+import type { Vec3d } from '@transcendence/game-shared';
 
 export class GameScene {
 	private scene!: Scene;
@@ -15,6 +16,7 @@ export class GameScene {
 	private uiText!: GUI.TextBlock;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
+	private room!: GameRoom;
 
 	private walkAnim!: BABYLON.AnimationGroup;
 
@@ -57,7 +59,7 @@ export class GameScene {
 		this.light.intensity = 0.7;
 		this.ground = BABYLON.MeshBuilder.CreatePlane(
 			'ground',
-			{ size: 20 },
+			{ size: 30 },
 			this.scene,
 		);
 		this.ground.position.y = 0;
@@ -68,14 +70,23 @@ export class GameScene {
 	initInput() {
 		this.scene.onBeforeRenderObservable.add(() => {
 			let moving = false;
+			let running = false;
+			if (this.input.isPressed('shift')) {
+				running = true;
+			}
+			let speed = running ? 0.5 : 0.1;
 			if (this.input.isPressed('w')) {
-				this.player.translate(BABYLON.Axis.Z, 0.1, BABYLON.Space.LOCAL);
+				this.player.translate(
+					BABYLON.Axis.Z,
+					speed,
+					BABYLON.Space.LOCAL,
+				);
 				moving = true;
 			}
 			if (this.input.isPressed('s')) {
 				this.player.translate(
 					BABYLON.Axis.Z,
-					-0.1,
+					-speed,
 					BABYLON.Space.LOCAL,
 				);
 				moving = true;
@@ -89,6 +100,9 @@ export class GameScene {
 				moving = true;
 			}
 			if (moving) this.walkAnim.play();
+			if (this.input.isReleased('shift')) {
+				running = false;
+			}
 			if (
 				this.input.isReleased('w') &&
 				this.input.isReleased('s') &&
@@ -98,14 +112,12 @@ export class GameScene {
 				this.walkAnim.stop();
 				moving = false;
 			}
-			console.log(`Player x: ${this.player.position.x}`);
-			console.log(`Player y: ${this.player.position.y}`);
 		});
 	}
 
 	async addPlayer() {
 		const result = await BABYLON.ImportMeshAsync(
-			'/models/bomb.glb',
+			'/models/Player.glb',
 			this.scene,
 		);
 		const model = result.meshes[0];
@@ -120,16 +132,17 @@ export class GameScene {
 	}
 
 	async connectToServer() {
-		console.log(import.meta.env);
 		this.colyseusSDK = new COLYSEUS.Client(
 			import.meta.env.VITE_GAME_SOCKET_URL,
 		);
 
 		try {
-			const room = await this.colyseusSDK.joinOrCreate('my_room');
-			this.uiText.text = 'Connected to room :' + room.roomId;
+			this.room = await this.colyseusSDK.joinOrCreate('game');
+			const new_pos: Vec3d = { x: 15, y: 0, z: 15 };
+			this.room.send('move', new_pos);
+			// this.uiText.text = 'Connected to room :' + room.roomId;
 		} catch (error) {
-			this.uiText.text = 'Connection failed';
+			// this.uiText.text = 'Connection failed';
 		}
 	}
 
@@ -140,9 +153,8 @@ export class GameScene {
 		this.uiText.text = 'LongLiveTheKing';
 		this.uiText.color = '#f0ff00';
 		this.uiText.fontFamily = 'Roboto';
-		this.uiText.fontSize = 48;
-		this.uiText.textHorizontalAlignment =
-			GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+		this.uiText.fontSize = 24;
+		GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
 		this.uiText.paddingBottom = '10px';
 		this.uiText.textVerticalAlignment =
 			GUI.Control.VERTICAL_ALIGNMENT_CENTER;
