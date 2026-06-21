@@ -13,7 +13,6 @@ export class GameScene {
 	private light!: Light;
 	private ground!: BABYLON.Mesh;
 	private colyseusSDK!: COLYSEUS.Client;
-	private uiText!: GUI.TextBlock;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
 	private room!: GameRoom;
@@ -27,7 +26,7 @@ export class GameScene {
 
 	async init() {
 		this.createScene();
-		// this.initGUI();
+		this.initGUI();
 		// this.connectToServer();
 		await this.addPlayer();
 		this.input = new InputManager(this.scene);
@@ -100,9 +99,6 @@ export class GameScene {
 				moving = true;
 			}
 			if (moving) this.walkAnim.play();
-			if (this.input.isReleased('shift')) {
-				running = false;
-			}
 			if (
 				this.input.isReleased('w') &&
 				this.input.isReleased('s') &&
@@ -147,17 +143,35 @@ export class GameScene {
 	}
 
 	initGUI() {
-		const advancedTexture =
-			GUI.AdvancedDynamicTexture.CreateFullscreenUI('textUI');
-		this.uiText = new GUI.TextBlock('instructions');
-		this.uiText.text = 'LongLiveTheKing';
-		this.uiText.color = '#f0ff00';
-		this.uiText.fontFamily = 'Roboto';
-		this.uiText.fontSize = 24;
-		GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
-		this.uiText.paddingBottom = '10px';
-		this.uiText.textVerticalAlignment =
-			GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-		advancedTexture.addControl(this.uiText);
+		const ui = GUI.AdvancedDynamicTexture.CreateFullscreenUI('UI');
+		const debugMenu = new GUI.Rectangle('debugMenu');
+
+		debugMenu.width = '400px';
+		debugMenu.height = '600px';
+		debugMenu.cornerRadius = 10;
+		debugMenu.thickness = 1;
+		debugMenu.color = 'white';
+		debugMenu.background = 'rgba(20, 20, 20, 0.85)';
+		debugMenu.horizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
+		debugMenu.verticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_TOP;
+		debugMenu.left = '-12px';
+		debugMenu.top = '12px';
+		ui.addControl(debugMenu);
+
+		const panel = new GUI.StackPanel();
+		panel.paddingTop = '10px';
+		panel.paddingRight = '10px';
+		panel.paddingLeft = '10px';
+		panel.spacing = 0;
+		debugMenu.addControl(panel);
+
+		const title = new GUI.TextBlock();
+		title.text = 'Debug Menu';
+		title.height = '30px';
+		title.color = 'white';
+		title.fontSize = 22;
+		title.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_TOP;
+		title.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+		panel.addControl(title);
 	}
 }
