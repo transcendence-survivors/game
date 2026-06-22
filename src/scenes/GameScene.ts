@@ -27,7 +27,7 @@ export class GameScene {
 	async init() {
 		this.createScene();
 		this.initGUI();
-		// this.connectToServer();
+		this.connectToServer();
 		await this.addPlayer();
 		this.input = new InputManager(this.scene);
 		this.initInput();
@@ -134,12 +134,9 @@ export class GameScene {
 
 		try {
 			this.room = await this.colyseusSDK.joinOrCreate('game');
-			const new_pos: Vec3d = { x: 15, y: 0, z: 15 };
+			const new_pos: Vec3d = { x: 15, y: 15, z: 0 };
 			this.room.send('move', new_pos);
-			// this.uiText.text = 'Connected to room :' + room.roomId;
-		} catch (error) {
-			// this.uiText.text = 'Connection failed';
-		}
+		} catch (error) {}
 	}
 
 	initGUI() {
