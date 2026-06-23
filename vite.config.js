@@ -7,13 +7,6 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "0.0.0.0",
       port: Number(env.PORT) || 5173,
-      proxy: {
-        "/colyseus": {
-          target: "http://localhost:4000",
-          changeOrigin: true,
-          ws: true,
-        },
-      },
     },
   }
 })

@@ -128,15 +128,14 @@ export class GameScene {
 	}
 
 	async connectToServer() {
-		this.colyseusSDK = new COLYSEUS.Client(
-			import.meta.env.VITE_GAME_SOCKET_URL,
-		);
-
 		try {
+			this.colyseusSDK = new COLYSEUS.Client('ws://localhost:4000');
 			this.room = await this.colyseusSDK.joinOrCreate('game');
 			const new_pos: Vec3d = { x: 15, y: 15, z: 0 };
 			this.room.send('move', new_pos);
-		} catch (error) {}
+		} catch (error) {
+			console.log('ERROR SUUUUUUUUUUUUU');
+		}
 	}
 
 	initGUI() {
