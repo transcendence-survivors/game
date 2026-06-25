@@ -14,7 +14,7 @@ const SUN_H = 150;
 /** Rayon (unités) de la zone accessible, centrée sur le rayon de lumière. */
 const ACCESS_RADIUS = 128;
 /** Le rayon avance tout seul à cette vitesse (u/s) dans cette direction (normalisée). */
-const RAY_SPEED = 8;
+const RAY_SPEED = 1;
 const RAY_DIR_X = 0;
 const RAY_DIR_Z = 1;
 
@@ -88,7 +88,9 @@ export class GameScene {
 		this.scene.ambientColor = new BABYLON.Color3(0, 0, 0);
 		this.scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
 		this.scene.fogColor = new BABYLON.Color3(0, 0, 0);
-		this.scene.fogDensity = 0.0022;
+		// Brouillard plus dense : le terrain fond PROGRESSIVEMENT vers le noir avant
+		// le bord des chunks -> bordure continue (plus de coupure nette à l'horizon).
+		this.scene.fogDensity = 0.004;
 
 		this.terrainMaterial = new BABYLON.StandardMaterial('terrain', this.scene);
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
@@ -145,7 +147,7 @@ export class GameScene {
 			this.world,
 			this.terrainMaterial,
 			{
-				viewDistance: 3,
+				viewDistance: 4,
 				flat: true,
 				onChunk: (mesh) => {
 					mesh.receiveShadows = true;
