@@ -95,18 +95,22 @@ export class GameScene {
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
 
+		// Spot large à exponent doux : la luminosité au sol décroît PROGRESSIVEMENT
+		// du centre vers les bords (pas de coupure nette du cône). L'angle est très
+		// ouvert pour que ce soit l'atténuation (exponent), et non le bord du cône,
+		// qui définisse la limite — d'où un fondu doux jusqu'au noir.
 		this.rayLight = new BABYLON.SpotLight(
 			'SunRayLight',
 			new BABYLON.Vector3(0, strikeY + 110, 0),
 			new BABYLON.Vector3(0, -1, 0),
-			1.15,
-			2,
+			2.6,
+			3,
 			this.scene,
 		);
 		this.rayLight.diffuse = beamColor;
 		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		this.rayLight.intensity = 42;
-		this.rayLight.range = 320;
+		this.rayLight.intensity = 80;
+		this.rayLight.range = 350;
 
 		this.sunRay = new SunRayVolumetric(this.scene, {
 			color: beamColor,
