@@ -14,7 +14,7 @@ const SUN_H = 150;
 export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
-	private camera!: BABYLON.FollowCamera;
+	private camera!: BABYLON.ArcRotateCamera;
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;
 	private chunkManager!: ChunkManager;
@@ -55,17 +55,24 @@ export class GameScene {
 
 	createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		this.camera = new BABYLON.FollowCamera(
+		// Caméra 3ᵉ personne : orbite derrière le joueur (sa cible le suit chaque
+		// frame, cf. initTerrainFollow), pivotable à la souris. C'est ELLE qui donne
+		// l'avant : les déplacements WASD sont relatifs à la caméra (cf. initInput).
+		this.camera = new BABYLON.ArcRotateCamera(
 			'Player-Camera',
-			new BABYLON.Vector3(0, 10, -10),
+			-Math.PI / 2,
+			1.0,
+			18,
+			new BABYLON.Vector3(0, 0, 0),
 			this.scene,
 		);
-		this.camera.radius = 5;
-		this.camera.heightOffset = 10;
-		this.camera.rotationOffset = 180;
-		this.camera.cameraAcceleration = 0.05;
-		this.camera.maxCameraSpeed = 2;
 		this.camera.attachControl(true);
+		this.camera.lowerRadiusLimit = 15;
+		this.camera.upperRadiusLimit = 40;
+		this.camera.lowerBetaLimit = 0.7;
+		this.camera.upperBetaLimit = 1.45;
+		this.camera.wheelDeltaPercentage = 0.02;
+		this.camera.panningSensibility = 0;
 		// Noir total : AUCUNE lumière d'ambiance. Tout ce qui n'est pas atteint par
 		// le rayon reste noir — seul le rayon (spot + faisceau) éclaire. Ciel et
 		// brouillard noirs pour que le hors-portée disparaisse dans le noir.
@@ -97,7 +104,7 @@ export class GameScene {
 		// faisceau, et l'angle éclaire les faces verticales (joueur + falaises) en
 		// projetant des ombres. Cône large + exponent modéré => flaque large dont la
 		// luminosité décroît PROGRESSIVEMENT jusqu'au noir (pas de coupure de cône).
-		const sunDir = new BABYLON.Vector3(0.6, -0.62, 0.5);
+		const sunDir = new BABYLON.Vector3(0.4, -0.82, 0.3);
 		this.rayLight = new BABYLON.SpotLight(
 			'SunRayLight',
 			new BABYLON.Vector3(
@@ -122,7 +129,7 @@ export class GameScene {
 		// résolution est étalée sur une plus grande zone).
 		this.shadowGen = new BABYLON.ShadowGenerator(4096, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
-		this.shadowGen.setDarkness(0.08);
+		this.shadowGen.setDarkness(0.0);
 
 		this.chunkManager = new ChunkManager(
 			this.scene,
@@ -142,7 +149,7 @@ export class GameScene {
 		this.sunRay = new SunRayVolumetric(this.scene, {
 			color: beamColor,
 			strikeY,
-			radius: 12,
+			radius: 8,
 			height: 140,
 			intensity: 1.0,
 		});
@@ -150,49 +157,40 @@ export class GameScene {
 	}
 
 	initInput() {
+		const dir = new BABYLON.Vector3();
+		const move = new BABYLON.Vector3();
 		this.scene.onBeforeRenderObservable.add(() => {
-			let newPlayer = this.player;
+			const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+			const speed = (this.input.isPressed('shift') ? 32 : 16) * dt;
 
-			let moving = false;
-			let running = false;
-			if (this.input.isPressed('shift')) {
-				running = true;
-			}
-			let speed = running ? 0.5 : 0.1;
-			if (this.input.isPressed('w')) {
-				newPlayer.translate(BABYLON.Axis.Z, speed, BABYLON.Space.LOCAL);
-				moving = true;
-			}
-			if (this.input.isPressed('s')) {
-				newPlayer.translate(
-					BABYLON.Axis.Z,
-					-speed,
-					BABYLON.Space.LOCAL,
-				);
-				moving = true;
-			}
-			if (this.input.isPressed('d')) {
-				newPlayer.rotate(BABYLON.Axis.Y, 0.05, BABYLON.Space.LOCAL);
-				moving = true;
-			}
-			if (this.input.isPressed('a')) {
-				newPlayer.rotate(BABYLON.Axis.Y, -0.05, BABYLON.Space.LOCAL);
-				moving = true;
-			}
-			if (moving) this.walkAnim.play();
-			if (
-				this.input.isReleased('w') &&
-				this.input.isReleased('s') &&
-				this.input.isReleased('a') &&
-				this.input.isReleased('d')
-			) {
+			// "Avant" = de la caméra vers le joueur, projeté au sol : les WASD sont
+			// donc relatifs à la CAMÉRA (c'est elle qui donne la direction). Le
+			// personnage se tourne ensuite vers la direction de son mouvement.
+			dir.copyFrom(this.player.position).subtractInPlace(this.camera.position);
+			dir.y = 0;
+			if (dir.lengthSquared() > 1e-4) dir.normalize();
+			const right = BABYLON.Vector3.Cross(BABYLON.Axis.Y, dir);
+
+			move.set(0, 0, 0);
+			if (this.input.isPressed('w')) move.addInPlace(dir);
+			if (this.input.isPressed('s')) move.subtractInPlace(dir);
+			if (this.input.isPressed('d')) move.addInPlace(right);
+			if (this.input.isPressed('a')) move.subtractInPlace(right);
+
+			if (move.lengthSquared() > 0) {
+				move.normalize().scaleInPlace(speed);
+				this.player.position.x += move.x;
+				this.player.position.z += move.z;
+				this.player.rotation.y = Math.atan2(move.x, move.z);
+				this.walkAnim.play();
+			} else {
 				this.walkAnim.stop();
-				moving = false;
 			}
+
 			const new_pos: Vec3d = {
-				x: newPlayer.position.x,
-				y: newPlayer.position.y,
-				z: newPlayer.position.z,
+				x: this.player.position.x,
+				y: this.player.position.y,
+				z: this.player.position.z,
 			};
 			this.room.send('move', new_pos);
 		});
@@ -207,31 +205,23 @@ export class GameScene {
 			);
 			this.player.position.y +=
 				(groundY - this.player.position.y) * Math.min(1, dt * 14);
+			this.camera.target.copyFrom(this.player.position);
 			this.chunkManager.update(this.player.position);
 			this.updateRay();
 		});
 	}
 
-	/** Replace le rayon (spot + faisceau) un peu devant le joueur, posé au sol. */
+	/** Replace le rayon (spot + faisceau) sur le joueur, posé au sol. */
 	private updateRay() {
 		const p = this.player.position;
-		const cam = this.camera.position;
-		let fx = p.x - cam.x;
-		let fz = p.z - cam.z;
-		const len = Math.hypot(fx, fz) || 1;
-		fx /= len;
-		fz /= len;
-		const ahead = 14;
-		const bx = p.x + fx * ahead;
-		const bz = p.z + fz * ahead;
-		const groundY = this.world.height(bx, bz);
-		this.sunRay.setStrike(bx, groundY, bz);
+		const groundY = this.world.height(p.x, p.z);
+		this.sunRay.setStrike(p.x, groundY, p.z);
 		// La lumière reste visée sur l'impact : position = impact - direction * H.
 		const d = this.rayLight.direction;
 		this.rayLight.position.set(
-			bx - d.x * SUN_H,
+			p.x - d.x * SUN_H,
 			groundY - d.y * SUN_H,
-			bz - d.z * SUN_H,
+			p.z - d.z * SUN_H,
 		);
 	}
 
@@ -244,7 +234,6 @@ export class GameScene {
 		model.position = new BABYLON.Vector3(0, this.world.height(0, 0), 0);
 		model.scaling = new BABYLON.Vector3(1, 1, 1);
 		model.isVisible = true;
-		this.camera.lockedTarget = model;
 		this.player = model;
 		// Le joueur est éclairé par le rayon ET projette son ombre. Mais ses
 		// PBRMaterial réagissent autrement que le terrain : on aligne leur falloff
@@ -264,11 +253,11 @@ export class GameScene {
 		// la divise aussi (≈ 1.0 effectif).
 		const playerLight = new BABYLON.HemisphericLight(
 			'PlayerLight',
-			new BABYLON.Vector3(-0.6, 0.62, -0.5),
+			new BABYLON.Vector3(-0.4, 0.82, -0.3),
 			this.scene,
 		);
 		playerLight.diffuse = new BABYLON.Color3(1.0, 0.92, 0.72);
-		playerLight.groundColor = new BABYLON.Color3(0.3, 0.26, 0.2);
+		playerLight.groundColor = new BABYLON.Color3(0.55, 0.5, 0.42);
 		playerLight.intensity = 10;
 		playerLight.includedOnlyMeshes = result.meshes;
 		this.walkAnim = result.animationGroups[0];
