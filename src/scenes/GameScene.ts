@@ -27,6 +27,8 @@ export class GameScene {
 	private player!: BABYLON.AbstractMesh;
 	private room!: COLYSEUS.Room<GameState>;
 
+	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
+
 	private walkAnim!: BABYLON.AnimationGroup;
 
 	public ready: Promise<void>;
@@ -148,6 +150,26 @@ export class GameScene {
 		model.rotationQuaternion = null;
 	}
 
+	async addRemotePlayer(sessionId: string) {
+		const result = await BABYLON.ImportMeshAsync(
+			'/models/Player.glb',
+			this.scene,
+		);
+		const model = result.meshes[0];
+		model.rotationQuaternion = null;
+		this.remotePlayers.set(sessionId, model);
+		result.animationGroups[0].stop();
+		return model;
+	}
+
+	removeRemotePlayer(sessionId: string) {
+		const mesh = this.remotePlayers.get(sessionId);
+		if (mesh) {
+			mesh.dispose();
+			this.remotePlayers.delete(sessionId);
+		}
+	}
+
 	async connectToServer() {
 		try {
 			this.colyseusSDK = new COLYSEUS.Client('ws://localhost:4000');
@@ -225,14 +247,27 @@ export class GameScene {
 
 	listenToState() {
 		const callbacks = COLYSEUS.Callbacks.get(this.room);
-		callbacks.onAdd('players', (player, sessionId) => {
-			if (!this.player) return;
-			if (sessionId !== this.room.sessionId) return;
-			this.reconcile(player);
-			callbacks.onChange(player, () => {
+		callbacks.onAdd('players', async (player, sessionId) => {
+			if (sessionId === this.room.sessionId) {
 				if (!this.player) return;
 				this.reconcile(player);
-			});
+				callbacks.onChange(player, () => {
+					if (!this.player) return;
+					this.reconcile(player);
+				});
+			} else {
+				const mesh = await this.addRemotePlayer(sessionId);
+				callbacks.onChange(player, () => {
+					mesh.position.x = player.x;
+					mesh.position.z = player.z;
+					mesh.rotation.y = player.rotationY + Math.PI;
+				});
+			}
+		});
+		callbacks.onRemove('players', (player, sessionId) => {
+			if (sessionId !== this.room.sessionId) {
+				this.removeRemotePlayer(sessionId);
+			}
 		});
 	}
 }
