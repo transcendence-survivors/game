@@ -15,7 +15,14 @@
  * a DEPTH24_STENCIL8 texture, both core WebGL2 features.
  */
 
-import { Constants, Effect, PostProcess } from '@babylonjs/core';
+import {
+	Color4,
+	Constants,
+	DynamicTexture,
+	Effect,
+	ParticleSystem,
+	PostProcess,
+} from '@babylonjs/core';
 import type {
 	Camera,
 	Color3,
@@ -125,9 +132,26 @@ void main(void){
 }
 `;
 
+/** A soft round radial sprite (white core → transparent) for the dust motes. */
+function radialSprite(scene: Scene, name: string): DynamicTexture {
+	const tex = new DynamicTexture(name, { width: 128, height: 128 }, scene, false);
+	tex.hasAlpha = true;
+	const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+	const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+	g.addColorStop(0, 'rgba(255,255,255,1)');
+	g.addColorStop(0.45, 'rgba(255,255,255,0.5)');
+	g.addColorStop(1, 'rgba(255,255,255,0)');
+	ctx.fillStyle = g;
+	ctx.fillRect(0, 0, 128, 128);
+	tex.update();
+	return tex;
+}
+
 export class SunRayVolumetric {
 	private readonly scene: Scene;
 	private readonly post: PostProcess;
+	/** Floating illuminated dust drifting up inside the shaft (gives it volume). */
+	private readonly dust: ParticleSystem;
 	/** Shaft base centre in world space (xz follow the zone; y = strikeY). */
 	private readonly center: Vector3;
 	private readonly color: Color3;
@@ -176,6 +200,32 @@ export class SunRayVolumetric {
 			effect.setFloat4('uBeamShape', this.radius, this.height, this.intensity, time);
 			effect.setColor3('uColor', this.color);
 		});
+
+		// Warm motes drifting slowly UP inside the shaft, additive so they only add
+		// glow — gives the beam real volume and life. The emitter IS `center`, so
+		// the dust column follows the strike point (see setStrike).
+		const r = this.radius;
+		this.dust = new ParticleSystem('sun-ray-dust', 600, scene);
+		this.dust.particleTexture = radialSprite(scene, 'sun-ray-dust-tex');
+		this.dust.emitter = this.center;
+		this.dust.minEmitBox = new Vec3(-r, 0, -r);
+		this.dust.maxEmitBox = new Vec3(r, this.height * 0.8, r);
+		this.dust.color1 = new Color4(1.0, 0.85, 0.55, 0.7);
+		this.dust.color2 = new Color4(1.0, 0.72, 0.4, 0.45);
+		this.dust.colorDead = new Color4(1.0, 0.8, 0.5, 0.0);
+		this.dust.minSize = 0.2;
+		this.dust.maxSize = 1.0;
+		this.dust.minLifeTime = 4.0;
+		this.dust.maxLifeTime = 9.0;
+		this.dust.emitRate = 140;
+		this.dust.blendMode = ParticleSystem.BLENDMODE_ADD;
+		this.dust.gravity = new Vec3(0, 0.6, 0); // gentle upward drift
+		this.dust.direction1 = new Vec3(-0.15, 0.6, -0.15);
+		this.dust.direction2 = new Vec3(0.15, 1.0, 0.15);
+		this.dust.minEmitPower = 0.2;
+		this.dust.maxEmitPower = 0.8;
+		this.dust.updateSpeed = 0.02;
+		this.dust.start();
 	}
 
 	/** Move the shaft's base to a new strike point (x, ground y, z). */
@@ -208,6 +258,7 @@ export class SunRayVolumetric {
 	}
 
 	dispose(): void {
+		this.dust.dispose();
 		this.post.dispose();
 	}
 }

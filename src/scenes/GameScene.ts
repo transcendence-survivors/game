@@ -117,7 +117,7 @@ export class GameScene {
 			strikeY,
 			radius: 12,
 			height: 140,
-			intensity: 0.7,
+			intensity: 1.0,
 		});
 		return this.scene;
 	}
