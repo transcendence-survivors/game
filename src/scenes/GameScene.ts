@@ -95,9 +95,8 @@ export class GameScene {
 		// Lumière clé INCLINÉE (comme un soleil) mais visée sur le point d'impact
 		// (position = impact - direction * H) : la flaque reste centrée sous le
 		// faisceau, et l'angle éclaire les faces verticales (joueur + falaises) en
-		// projetant des ombres. Cône resserré + exponent élevé => la luminosité
-		// décroît quand même PROGRESSIVEMENT (pas de coupure de cône) ET la shadow
-		// map garde assez de résolution pour des ombres nettes.
+		// projetant des ombres. Cône large + exponent modéré => flaque large dont la
+		// luminosité décroît PROGRESSIVEMENT jusqu'au noir (pas de coupure de cône).
 		const sunDir = new BABYLON.Vector3(0.6, -0.62, 0.5);
 		this.rayLight = new BABYLON.SpotLight(
 			'SunRayLight',
@@ -107,19 +106,21 @@ export class GameScene {
 				-sunDir.z * SUN_H,
 			),
 			sunDir,
-			1.2,
-			12,
+			2.0,
+			7,
 			this.scene,
 		);
 		this.rayLight.diffuse = beamColor;
 		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		this.rayLight.intensity = 60;
+		this.rayLight.intensity = 70;
 		this.rayLight.range = 360;
 		this.rayLight.shadowMinZ = 40;
 		this.rayLight.shadowMaxZ = 300;
 
-		// Ombres projetées par le rayon (joueur + terrain), filtrage PCF doux.
-		this.shadowGen = new BABYLON.ShadowGenerator(2048, this.rayLight);
+		// Ombres projetées par le rayon (joueur + terrain), filtrage PCF doux. Shadow
+		// map 4096 pour garder des ombres NETTES malgré la flaque large (la
+		// résolution est étalée sur une plus grande zone).
+		this.shadowGen = new BABYLON.ShadowGenerator(4096, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
 		this.shadowGen.setDarkness(0.08);
 
