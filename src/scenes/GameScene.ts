@@ -28,6 +28,7 @@ export class GameScene {
 	private room!: COLYSEUS.Room<GameState>;
 
 	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
+	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
 
 	private walkAnim!: BABYLON.AnimationGroup;
 
@@ -85,7 +86,7 @@ export class GameScene {
 			new BABYLON.Vector3(0, 1, 0),
 			this.scene,
 		);
-		this.light.intensity = 1.0;
+		this.light.intensity = 0.5;
 		this.ground = BABYLON.MeshBuilder.CreateGround(
 			'ground',
 			{ width: 30, height: 30 },
@@ -261,6 +262,11 @@ export class GameScene {
 					mesh.position.x = player.x;
 					mesh.position.z = player.z;
 					mesh.rotation.y = player.rotationY + Math.PI;
+					const anim = this.remotePlayerAnims.get(sessionId);
+					if (anim) {
+						if (player.animState === 'moving') anim.play(true);
+						else anim.stop();
+					}
 				});
 			}
 		});

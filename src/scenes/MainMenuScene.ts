@@ -47,13 +47,13 @@ export class MainMenuScene {
 
 	constructor(engine: Engine, onAction: (action: MenuAction) => void) {
 		this.onAction = onAction;
-		this.scene = this._buildScene(engine);
+		this.scene = this.buildScene(engine);
 		this.ui = AdvancedDynamicTexture.CreateFullscreenUI(
 			'MainMenuUI',
 			true,
 			this.scene,
 		);
-		this._buildMenu();
+		this.buildMenu();
 	}
 
 	render() {
@@ -65,7 +65,7 @@ export class MainMenuScene {
 		this.scene.dispose();
 	}
 
-	private _buildScene(engine: Engine): Scene {
+	buildScene(engine: Engine): Scene {
 		const scene = new Scene(engine);
 		scene.clearColor = styleSettings.background;
 		const camera = new FreeCamera('menuCam', new Vector3(0, 0, -5), scene);
@@ -83,7 +83,7 @@ export class MainMenuScene {
 		return scene;
 	}
 
-	private _buildMenu() {
+	buildMenu() {
 		const overlay = new Rectangle('overlay');
 		overlay.width = '100%';
 		overlay.height = '100%';
@@ -101,7 +101,7 @@ export class MainMenuScene {
 		card.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
 		card.left = '40px';
 		card.width = '380px';
-		card.height = '92%';
+		card.height = '100%';
 		card.paddingTop = '48px';
 		card.paddingBottom = '48px';
 		this.ui.addControl(card);
@@ -129,7 +129,7 @@ export class MainMenuScene {
 		sub.fontFamily = styleSettings.fontSans;
 		sub.fontWeight = '400';
 		sub.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-		sub.height = '18px';
+		sub.height = '8px';
 		sub.paddingBottom = '20px';
 		stack.addControl(sub);
 
@@ -141,11 +141,11 @@ export class MainMenuScene {
 		stack.addControl(divider);
 
 		for (const { label, action } of MENU_BUTTONS) {
-			stack.addControl(this._makeButton(label, action));
+			stack.addControl(this.makeButton(label, action));
 		}
 	}
 
-	private _makeButton(label: string, action: MenuAction): Button {
+	makeButton(label: string, action: MenuAction): Button {
 		const isPrimary = action === 'play';
 
 		const btn = new Button(`btn_${action}`);
