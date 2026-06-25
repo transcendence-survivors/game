@@ -5,6 +5,7 @@ import * as COLYSEUS from 'colyseus.js';
 import '@babylonjs/loaders/glTF/2.0';
 import { InputManager } from '../InputManager';
 import { World, ChunkManager } from '../world';
+import { SunRayVolumetric } from '../effects/SunRayVolumetric';
 import type { Vec3d } from '@transcendence/game-shared';
 
 export class GameScene {
@@ -15,6 +16,7 @@ export class GameScene {
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;
 	private chunkManager!: ChunkManager;
+	private sunRay!: SunRayVolumetric;
 	private colyseusSDK!: COLYSEUS.Client;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
@@ -93,6 +95,21 @@ export class GameScene {
 			{ viewDistance: 3, flat: true },
 		);
 		this.chunkManager.update(BABYLON.Vector3.Zero());
+
+		// Rayon de lumière volumétrique qui tombe du ciel sur la map, au point de
+		// spawn (origine), posé sur la hauteur réelle du sol. Créé après la caméra
+		// (il lit la profondeur de la scène) — reste en WebGL2.
+		this.scene.activeCamera = this.camera;
+		const beamX = 0;
+		const beamZ = 60;
+		this.sunRay = new SunRayVolumetric(this.scene, {
+			color: new BABYLON.Color3(1.0, 0.9, 0.62),
+			strikeY: this.world.height(beamX, beamZ),
+			radius: 14,
+			height: 140,
+			intensity: 0.9,
+		});
+		this.sunRay.setCenter(beamX, beamZ);
 		return this.scene;
 	}
 
