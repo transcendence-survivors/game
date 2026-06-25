@@ -1,4 +1,4 @@
-import type { Engine, Light, Scene } from '@babylonjs/core';
+import type { Engine, Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from 'colyseus.js';
@@ -12,7 +12,6 @@ export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
 	private camera!: BABYLON.FollowCamera;
-	private light!: Light;
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;
 	private chunkManager!: ChunkManager;
@@ -62,26 +61,13 @@ export class GameScene {
 		this.camera.cameraAcceleration = 0.05;
 		this.camera.maxCameraSpeed = 2;
 		this.camera.attachControl(true);
-		const sky = new BABYLON.Color3(0.49, 0.75, 0.93);
+		// Ambiance nuit : aucune lumière d'ambiance ni soleil — le rayon est la
+		// SEULE source de lumière. Ciel et brouillard sombres pour rester cohérent.
+		const sky = new BABYLON.Color3(0.02, 0.03, 0.06);
 		this.scene.clearColor = new BABYLON.Color4(sky.r, sky.g, sky.b, 1);
 		this.scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
 		this.scene.fogColor = sky;
 		this.scene.fogDensity = 0.0022;
-
-		const hemi = new BABYLON.HemisphericLight(
-			'Light',
-			new BABYLON.Vector3(0.3, 1, 0.2),
-			this.scene,
-		);
-		hemi.groundColor = new BABYLON.Color3(0.34, 0.36, 0.34);
-		this.light = hemi;
-		this.light.intensity = 0.72;
-		const sun = new BABYLON.DirectionalLight(
-			'Sun',
-			new BABYLON.Vector3(-0.5, -1, -0.35),
-			this.scene,
-		);
-		sun.intensity = 1.0;
 
 		this.terrainMaterial = new BABYLON.StandardMaterial('terrain', this.scene);
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
@@ -96,15 +82,34 @@ export class GameScene {
 		);
 		this.chunkManager.update(BABYLON.Vector3.Zero());
 
-		// Rayon de lumière volumétrique qui tombe du ciel sur la map, au point de
-		// spawn (origine), posé sur la hauteur réelle du sol. Créé après la caméra
-		// (il lit la profondeur de la scène) — reste en WebGL2.
+		// Rayon de lumière qui tombe du ciel sur la map, au point de spawn, posé sur
+		// la hauteur réelle du sol. Il est la SEULE source de lumière de la scène :
+		//   - un SpotLight chaud descend du ciel et éclaire réellement le sol autour
+		//     de l'impact (le reste de la map reste dans le noir) ;
+		//   - le SunRayVolumetric (post-process additif) dessine le faisceau visible.
+		// Créé après la caméra (il lit la profondeur de la scène) — reste en WebGL2.
 		this.scene.activeCamera = this.camera;
 		const beamX = 0;
 		const beamZ = 60;
+		const strikeY = this.world.height(beamX, beamZ);
+		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
+
+		const rayLight = new BABYLON.SpotLight(
+			'SunRayLight',
+			new BABYLON.Vector3(beamX, strikeY + 160, beamZ),
+			new BABYLON.Vector3(0, -1, 0),
+			1.1,
+			1,
+			this.scene,
+		);
+		rayLight.diffuse = beamColor;
+		rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
+		rayLight.intensity = 14;
+		rayLight.range = 420;
+
 		this.sunRay = new SunRayVolumetric(this.scene, {
-			color: new BABYLON.Color3(1.0, 0.9, 0.62),
-			strikeY: this.world.height(beamX, beamZ),
+			color: beamColor,
+			strikeY,
 			radius: 14,
 			height: 140,
 			intensity: 0.9,
