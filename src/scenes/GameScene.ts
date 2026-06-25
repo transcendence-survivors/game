@@ -140,6 +140,10 @@ export class GameScene {
 		// résolution est étalée sur une plus grande zone).
 		this.shadowGen = new BABYLON.ShadowGenerator(4096, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
+		// Bias + normalBias : évitent l'auto-ombrage (shadow acne) qui dessinait des
+		// vagues/moiré sur le sol plat éclairé par le spot à incidence rasante.
+		this.shadowGen.bias = 0.0015;
+		this.shadowGen.normalBias = 0.2;
 		this.shadowGen.setDarkness(0.0);
 
 		this.chunkManager = new ChunkManager(
