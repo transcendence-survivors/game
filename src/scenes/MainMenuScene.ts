@@ -91,17 +91,6 @@ export class MainMenuScene {
 		overlay.thickness = 0;
 		this.ui.addControl(overlay);
 
-		const accentBar = new Rectangle('accentBar');
-		accentBar.width = '340px';
-		accentBar.height = '2px';
-		accentBar.background = styleSettings.primary;
-		accentBar.thickness = 0;
-		accentBar.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-		accentBar.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-		accentBar.left = '40px';
-		accentBar.top = '4%';
-		this.ui.addControl(accentBar);
-
 		const card = new Rectangle('menuCard');
 		card.adaptHeightToChildren = true;
 		card.background = styleSettings.card;

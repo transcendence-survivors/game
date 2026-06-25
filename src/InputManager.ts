@@ -5,13 +5,10 @@ import {
 	type Scene,
 } from '@babylonjs/core';
 
-// type InputState = 'walking' | 'running' | 'idle';
-
 export class InputManager {
 	private scene: Scene;
 	private keys = new Map<string, boolean>();
 	private keyboardObserver: Observer<KeyboardInfo>;
-	// private states = new Map<InputState, boolean>();
 
 	constructor(scene: Scene) {
 		this.scene = scene;

@@ -22,7 +22,8 @@
   "dependencies": {
     "@babylonjs/gui": "^9.4.1",
     "@babylonjs/loaders": "^9.4.1",
-    "@transcendence/game-shared": "file:../shared-package",
-    "colyseus.js": "^0.16.0"
+    "@colyseus/schema": "^4.0.26",
+    "@colyseus/sdk": "^0.17.43",
+    "@transcendence/game-shared": "file:../shared-package"
   }
 }
