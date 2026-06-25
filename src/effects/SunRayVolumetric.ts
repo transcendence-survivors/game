@@ -178,9 +178,10 @@ export class SunRayVolumetric {
 		});
 	}
 
-	/** Move the shaft to a new centre (xz). */
-	setCenter(x: number, z: number): void {
+	/** Move the shaft's base to a new strike point (x, ground y, z). */
+	setStrike(x: number, y: number, z: number): void {
 		this.center.x = x;
+		this.center.y = y;
 		this.center.z = z;
 	}
 
