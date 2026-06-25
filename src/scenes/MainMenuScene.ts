@@ -18,18 +18,12 @@ import {
 
 const styleSettings = {
 	background: new Color4(0.07, 0.06, 0.055, 1),
-
 	primary: '#E5A832',
 	primaryDark: '#1F160A',
-
 	foreground: '#F0EDE6',
-
 	mutedForeground: '#A8A49C',
-
 	border: '#312E28',
-
 	card: '#131110',
-
 	fontSans: 'Manrope, ui-sans-serif, system-ui, sans-serif',
 	fontMono: 'JetBrains Mono, ui-monospace, monospace',
 };
@@ -130,7 +124,7 @@ export class MainMenuScene {
 		stack.width = '100%';
 		card.addControl(stack);
 
-		const title = new TextBlock('title', 'GAME TITLE');
+		const title = new TextBlock('title', 'SUUUUUUU');
 		title.color = styleSettings.primary;
 		title.fontSize = '28px';
 		title.height = '42px';

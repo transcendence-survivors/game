@@ -7,14 +7,20 @@ function mainEntryPoint() {
 	const canvas = document.getElementById('game') as HTMLCanvasElement;
 
 	const engine = new BABYLON.Engine(canvas);
-	// const scene = new GameScene(engine);
-	const scene = new MainMenuScene(engine, (action) => {
-		if (action === 'play') console.log('Play button pressed');
+	let currentScene: MainMenuScene | GameScene;
+	const mainMenuScene = new MainMenuScene(engine, async (action) => {
+		if (action === 'play') {
+			const gameScene = new GameScene(engine);
+			await gameScene.ready;
+			mainMenuScene.dispose();
+			currentScene = gameScene;
+		}
 		if (action === 'settings') console.log('Settings button pressed');
 	});
+	currentScene = mainMenuScene;
 
 	engine.runRenderLoop(() => {
-		scene.render();
+		currentScene.render();
 	});
 	window.addEventListener('resize', () => {
 		engine.resize();

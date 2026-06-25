@@ -19,18 +19,24 @@ export class GameScene {
 
 	private walkAnim!: BABYLON.AnimationGroup;
 
+	public ready: Promise<void>;
+
 	constructor(engine: Engine) {
 		this.engine = engine;
-		this.init();
+		this.ready = this.init();
 	}
 
-	async init() {
+	private async init() {
 		this.createScene();
 		this.initGUI();
-		this.connectToServer();
+		await this.connectToServer();
 		await this.addPlayer();
 		this.input = new InputManager(this.scene);
 		this.initInput();
+	}
+
+	render() {
+		this.scene.render();
 	}
 
 	getScene() {
@@ -41,11 +47,11 @@ export class GameScene {
 		this.scene = new BABYLON.Scene(this.engine);
 		this.camera = new BABYLON.FollowCamera(
 			'Player-Camera',
-			new BABYLON.Vector3(0, 0, 0),
+			new BABYLON.Vector3(0, 10, -10),
 			this.scene,
 		);
 		this.camera.radius = 5;
-		this.camera.heightOffset = 6;
+		this.camera.heightOffset = 10;
 		this.camera.rotationOffset = 180;
 		this.camera.cameraAcceleration = 0.05;
 		this.camera.maxCameraSpeed = 2;
@@ -56,18 +62,20 @@ export class GameScene {
 			this.scene,
 		);
 		this.light.intensity = 0.7;
-		this.ground = BABYLON.MeshBuilder.CreatePlane(
+		this.ground = BABYLON.MeshBuilder.CreateGround(
 			'ground',
-			{ size: 30 },
+			{ width: 30, height: 30 },
 			this.scene,
 		);
 		this.ground.position.y = 0;
-		this.ground.rotation.x = Math.PI / 2;
+		this.ground.rotation.x = 0;
 		return this.scene;
 	}
 
 	initInput() {
 		this.scene.onBeforeRenderObservable.add(() => {
+			let newPlayer = this.player;
+
 			let moving = false;
 			let running = false;
 			if (this.input.isPressed('shift')) {
@@ -75,15 +83,11 @@ export class GameScene {
 			}
 			let speed = running ? 0.5 : 0.1;
 			if (this.input.isPressed('w')) {
-				this.player.translate(
-					BABYLON.Axis.Z,
-					speed,
-					BABYLON.Space.LOCAL,
-				);
+				newPlayer.translate(BABYLON.Axis.Z, speed, BABYLON.Space.LOCAL);
 				moving = true;
 			}
 			if (this.input.isPressed('s')) {
-				this.player.translate(
+				newPlayer.translate(
 					BABYLON.Axis.Z,
 					-speed,
 					BABYLON.Space.LOCAL,
@@ -91,11 +95,11 @@ export class GameScene {
 				moving = true;
 			}
 			if (this.input.isPressed('d')) {
-				this.player.rotate(BABYLON.Axis.Y, 0.05, BABYLON.Space.LOCAL);
+				newPlayer.rotate(BABYLON.Axis.Y, 0.05, BABYLON.Space.LOCAL);
 				moving = true;
 			}
 			if (this.input.isPressed('a')) {
-				this.player.rotate(BABYLON.Axis.Y, -0.05, BABYLON.Space.LOCAL);
+				newPlayer.rotate(BABYLON.Axis.Y, -0.05, BABYLON.Space.LOCAL);
 				moving = true;
 			}
 			if (moving) this.walkAnim.play();
@@ -108,6 +112,12 @@ export class GameScene {
 				this.walkAnim.stop();
 				moving = false;
 			}
+			const new_pos: Vec3d = {
+				x: newPlayer.position.x,
+				y: newPlayer.position.y,
+				z: newPlayer.position.z,
+			};
+			this.room.send('move', new_pos);
 		});
 	}
 
@@ -131,8 +141,6 @@ export class GameScene {
 		try {
 			this.colyseusSDK = new COLYSEUS.Client('ws://localhost:4000');
 			this.room = await this.colyseusSDK.joinOrCreate('game');
-			const new_pos: Vec3d = { x: 15, y: 15, z: 0 };
-			this.room.send('move', new_pos);
 		} catch (error) {
 			console.log('ERROR SUUUUUUUUUUUUU');
 		}
