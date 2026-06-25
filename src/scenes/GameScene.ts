@@ -8,6 +8,9 @@ import { World, ChunkManager } from '../world';
 import { SunRayVolumetric } from '../effects/SunRayVolumetric';
 import type { Vec3d } from '@transcendence/game-shared';
 
+/** Distance de la lumière clé au point d'impact, le long de sa direction. */
+const SUN_H = 150;
+
 export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
@@ -17,6 +20,7 @@ export class GameScene {
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
 	private rayLight!: BABYLON.SpotLight;
+	private shadowGen!: BABYLON.ShadowGenerator;
 	private colyseusSDK!: COLYSEUS.Client;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
@@ -76,13 +80,6 @@ export class GameScene {
 		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
 
 		this.world = new World(Math.floor(Math.random() * 1e9));
-		this.chunkManager = new ChunkManager(
-			this.scene,
-			this.world,
-			this.terrainMaterial,
-			{ viewDistance: 3, flat: true },
-		);
-		this.chunkManager.update(BABYLON.Vector3.Zero());
 
 		// Le rayon est la SEULE source de lumière et SUIT le joueur (placé un peu
 		// devant lui par updateRay), pour rester toujours visible sur une map
@@ -95,22 +92,51 @@ export class GameScene {
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
 
-		// Spot large à exponent doux : la luminosité au sol décroît PROGRESSIVEMENT
-		// du centre vers les bords (pas de coupure nette du cône). L'angle est très
-		// ouvert pour que ce soit l'atténuation (exponent), et non le bord du cône,
-		// qui définisse la limite — d'où un fondu doux jusqu'au noir.
+		// Lumière clé INCLINÉE (comme un soleil) mais visée sur le point d'impact
+		// (position = impact - direction * H) : la flaque reste centrée sous le
+		// faisceau, et l'angle éclaire les faces verticales (joueur + falaises) en
+		// projetant des ombres. Cône resserré + exponent élevé => la luminosité
+		// décroît quand même PROGRESSIVEMENT (pas de coupure de cône) ET la shadow
+		// map garde assez de résolution pour des ombres nettes.
+		const sunDir = new BABYLON.Vector3(0.6, -0.62, 0.5);
 		this.rayLight = new BABYLON.SpotLight(
 			'SunRayLight',
-			new BABYLON.Vector3(0, strikeY + 110, 0),
-			new BABYLON.Vector3(0, -1, 0),
-			2.6,
-			3,
+			new BABYLON.Vector3(
+				-sunDir.x * SUN_H,
+				strikeY - sunDir.y * SUN_H,
+				-sunDir.z * SUN_H,
+			),
+			sunDir,
+			1.2,
+			12,
 			this.scene,
 		);
 		this.rayLight.diffuse = beamColor;
 		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		this.rayLight.intensity = 80;
-		this.rayLight.range = 350;
+		this.rayLight.intensity = 60;
+		this.rayLight.range = 360;
+		this.rayLight.shadowMinZ = 40;
+		this.rayLight.shadowMaxZ = 300;
+
+		// Ombres projetées par le rayon (joueur + terrain), filtrage PCF doux.
+		this.shadowGen = new BABYLON.ShadowGenerator(2048, this.rayLight);
+		this.shadowGen.usePercentageCloserFiltering = true;
+		this.shadowGen.setDarkness(0.08);
+
+		this.chunkManager = new ChunkManager(
+			this.scene,
+			this.world,
+			this.terrainMaterial,
+			{
+				viewDistance: 3,
+				flat: true,
+				onChunk: (mesh) => {
+					mesh.receiveShadows = true;
+					this.shadowGen.addShadowCaster(mesh);
+				},
+			},
+		);
+		this.chunkManager.update(BABYLON.Vector3.Zero());
 
 		this.sunRay = new SunRayVolumetric(this.scene, {
 			color: beamColor,
@@ -199,7 +225,13 @@ export class GameScene {
 		const bz = p.z + fz * ahead;
 		const groundY = this.world.height(bx, bz);
 		this.sunRay.setStrike(bx, groundY, bz);
-		this.rayLight.position.set(bx, groundY + 110, bz);
+		// La lumière reste visée sur l'impact : position = impact - direction * H.
+		const d = this.rayLight.direction;
+		this.rayLight.position.set(
+			bx - d.x * SUN_H,
+			groundY - d.y * SUN_H,
+			bz - d.z * SUN_H,
+		);
 	}
 
 	async addPlayer() {
@@ -213,8 +245,32 @@ export class GameScene {
 		model.isVisible = true;
 		this.camera.lockedTarget = model;
 		this.player = model;
+		// Le joueur est éclairé par le rayon ET projette son ombre. Mais ses
+		// PBRMaterial réagissent autrement que le terrain : on aligne leur falloff
+		// (sinon l'inverse-carré annule la lumière à ~150 u) et on tamise fortement
+		// leur réponse au spot (directIntensity bas) pour qu'il ne soit pas cramé
+		// par l'intensité calibrée pour le terrain.
+		for (const m of result.meshes) {
+			this.shadowGen.addShadowCaster(m);
+			const mat = m.material;
+			if (mat instanceof BABYLON.PBRMaterial) {
+				mat.usePhysicalLightFalloff = false;
+				mat.directIntensity = 0.1;
+			}
+		}
+		// Remplissage doux réservé au joueur (n'éclaire que lui, pas le terrain) pour
+		// déboucher son côté à l'ombre du soleil. Intensité forte car directIntensity
+		// la divise aussi (≈ 1.0 effectif).
+		const playerLight = new BABYLON.HemisphericLight(
+			'PlayerLight',
+			new BABYLON.Vector3(-0.6, 0.62, -0.5),
+			this.scene,
+		);
+		playerLight.diffuse = new BABYLON.Color3(1.0, 0.92, 0.72);
+		playerLight.groundColor = new BABYLON.Color3(0.3, 0.26, 0.2);
+		playerLight.intensity = 10;
+		playerLight.includedOnlyMeshes = result.meshes;
 		this.walkAnim = result.animationGroups[0];
-		console.log(result);
 		this.walkAnim.stop();
 	}
 

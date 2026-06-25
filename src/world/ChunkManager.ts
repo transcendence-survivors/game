@@ -1,5 +1,5 @@
 import { TerrainChunk } from './TerrainChunk';
-import type { Scene, StandardMaterial, Vector3 } from '@babylonjs/core';
+import type { Mesh, Scene, StandardMaterial, Vector3 } from '@babylonjs/core';
 import type { World } from './World';
 
 export interface ChunkManagerOptions {
@@ -7,6 +7,8 @@ export interface ChunkManagerOptions {
 	viewDistance: number;
 	/** Rendu facetté (flat shading) façon Megabonk. */
 	flat: boolean;
+	/** Appelé pour chaque nouveau mesh de chunk (ex. enregistrer les ombres). */
+	onChunk?: (mesh: Mesh) => void;
 }
 
 /**
@@ -21,6 +23,7 @@ export class ChunkManager {
 	private size: number;
 	private view: number;
 	private flat: boolean;
+	private onChunk?: (mesh: Mesh) => void;
 	private chunks = new Map<string, TerrainChunk>();
 	private queue: Array<[number, number, string]> = [];
 	private lastCell: string | null = null;
@@ -37,6 +40,7 @@ export class ChunkManager {
 		this.size = world.N * world.CELL;
 		this.view = opt.viewDistance;
 		this.flat = opt.flat;
+		this.onChunk = opt.onChunk;
 	}
 
 	update(p: Vector3): void {
@@ -67,10 +71,16 @@ export class ChunkManager {
 			if (!next) break;
 			const [x, z, k] = next;
 			if (this.chunks.has(k)) continue;
-			this.chunks.set(
-				k,
-				new TerrainChunk(this.scene, this.world, x, z, this.mat, this.flat),
+			const chunk = new TerrainChunk(
+				this.scene,
+				this.world,
+				x,
+				z,
+				this.mat,
+				this.flat,
 			);
+			this.chunks.set(k, chunk);
+			this.onChunk?.(chunk.mesh);
 		}
 	}
 
