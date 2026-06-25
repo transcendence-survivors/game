@@ -4,6 +4,7 @@ import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from 'colyseus.js';
 import '@babylonjs/loaders/glTF/2.0';
 import { InputManager } from '../InputManager';
+import { World, ChunkManager } from '../world';
 import type { Vec3d } from '@transcendence/game-shared';
 
 export class GameScene {
@@ -11,7 +12,9 @@ export class GameScene {
 	private engine: Engine;
 	private camera!: BABYLON.FollowCamera;
 	private light!: Light;
-	private ground!: BABYLON.Mesh;
+	private world!: World;
+	private terrainMaterial!: BABYLON.StandardMaterial;
+	private chunkManager!: ChunkManager;
 	private colyseusSDK!: COLYSEUS.Client;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
@@ -33,6 +36,7 @@ export class GameScene {
 		await this.addPlayer();
 		this.input = new InputManager(this.scene);
 		this.initInput();
+		this.initTerrainFollow();
 	}
 
 	render() {
@@ -56,19 +60,39 @@ export class GameScene {
 		this.camera.cameraAcceleration = 0.05;
 		this.camera.maxCameraSpeed = 2;
 		this.camera.attachControl(true);
-		this.light = new BABYLON.HemisphericLight(
+		const sky = new BABYLON.Color3(0.49, 0.75, 0.93);
+		this.scene.clearColor = new BABYLON.Color4(sky.r, sky.g, sky.b, 1);
+		this.scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+		this.scene.fogColor = sky;
+		this.scene.fogDensity = 0.0022;
+
+		const hemi = new BABYLON.HemisphericLight(
 			'Light',
-			new BABYLON.Vector3(0, 1, 0),
+			new BABYLON.Vector3(0.3, 1, 0.2),
 			this.scene,
 		);
-		this.light.intensity = 0.7;
-		this.ground = BABYLON.MeshBuilder.CreateGround(
-			'ground',
-			{ width: 30, height: 30 },
+		hemi.groundColor = new BABYLON.Color3(0.34, 0.36, 0.34);
+		this.light = hemi;
+		this.light.intensity = 0.72;
+		const sun = new BABYLON.DirectionalLight(
+			'Sun',
+			new BABYLON.Vector3(-0.5, -1, -0.35),
 			this.scene,
 		);
-		this.ground.position.y = 0;
-		this.ground.rotation.x = 0;
+		sun.intensity = 1.0;
+
+		this.terrainMaterial = new BABYLON.StandardMaterial('terrain', this.scene);
+		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
+		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+
+		this.world = new World(Math.floor(Math.random() * 1e9));
+		this.chunkManager = new ChunkManager(
+			this.scene,
+			this.world,
+			this.terrainMaterial,
+			{ viewDistance: 3, flat: true },
+		);
+		this.chunkManager.update(BABYLON.Vector3.Zero());
 		return this.scene;
 	}
 
@@ -121,13 +145,26 @@ export class GameScene {
 		});
 	}
 
+	private initTerrainFollow() {
+		this.scene.onBeforeRenderObservable.add(() => {
+			const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+			const groundY = this.world.height(
+				this.player.position.x,
+				this.player.position.z,
+			);
+			this.player.position.y +=
+				(groundY - this.player.position.y) * Math.min(1, dt * 14);
+			this.chunkManager.update(this.player.position);
+		});
+	}
+
 	async addPlayer() {
 		const result = await BABYLON.ImportMeshAsync(
 			'/models/Player.glb',
 			this.scene,
 		);
 		const model = result.meshes[0];
-		model.position = new BABYLON.Vector3(0, 0, 0);
+		model.position = new BABYLON.Vector3(0, this.world.height(0, 0), 0);
 		model.scaling = new BABYLON.Vector3(1, 1, 1);
 		model.isVisible = true;
 		this.camera.lockedTarget = model;
