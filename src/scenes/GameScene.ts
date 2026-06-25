@@ -164,12 +164,20 @@ export class GameScene {
 			const speed = (this.input.isPressed('shift') ? 32 : 16) * dt;
 
 			// "Avant" = de la caméra vers le joueur, projeté au sol : les WASD sont
-			// donc relatifs à la CAMÉRA (c'est elle qui donne la direction). Le
-			// personnage se tourne ensuite vers la direction de son mouvement.
+			// donc relatifs à la CAMÉRA (c'est elle qui donne la direction).
 			dir.copyFrom(this.player.position).subtractInPlace(this.camera.position);
 			dir.y = 0;
 			if (dir.lengthSquared() > 1e-4) dir.normalize();
 			const right = BABYLON.Vector3.Cross(BABYLON.Axis.Y, dir);
+
+			// Le personnage regarde TOUJOURS dans le sens de la caméra (dos à elle) :
+			// quand on pivote la caméra, il tourne avec, en temps réel. Le modèle
+			// glTF a un rotationQuaternion (conversion d'axes) qui ignorerait
+			// rotation.y -> on pilote donc le quaternion.
+			this.player.rotationQuaternion = BABYLON.Quaternion.RotationAxis(
+				BABYLON.Axis.Y,
+				Math.atan2(dir.x, dir.z),
+			);
 
 			move.set(0, 0, 0);
 			if (this.input.isPressed('w')) move.addInPlace(dir);
@@ -181,7 +189,6 @@ export class GameScene {
 				move.normalize().scaleInPlace(speed);
 				this.player.position.x += move.x;
 				this.player.position.z += move.z;
-				this.player.rotation.y = Math.atan2(move.x, move.z);
 				this.walkAnim.play();
 			} else {
 				this.walkAnim.stop();
