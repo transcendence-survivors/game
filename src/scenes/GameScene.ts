@@ -62,12 +62,12 @@ export class GameScene {
 			'Player-Camera',
 			-Math.PI / 2,
 			1.0,
-			18,
+			14,
 			new BABYLON.Vector3(0, 0, 0),
 			this.scene,
 		);
 		this.camera.attachControl(true);
-		this.camera.lowerRadiusLimit = 15;
+		this.camera.lowerRadiusLimit = 13;
 		this.camera.upperRadiusLimit = 40;
 		this.camera.lowerBetaLimit = 0.7;
 		this.camera.upperBetaLimit = 1.45;
