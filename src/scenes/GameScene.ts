@@ -11,6 +11,13 @@ import type { Vec3d } from '@transcendence/game-shared';
 /** Distance de la lumière clé au point d'impact, le long de sa direction. */
 const SUN_H = 150;
 
+/** Rayon (unités) de la zone accessible, centrée sur le rayon de lumière. */
+const ACCESS_RADIUS = 128;
+/** Le rayon avance tout seul à cette vitesse (u/s) dans cette direction (normalisée). */
+const RAY_SPEED = 8;
+const RAY_DIR_X = 0;
+const RAY_DIR_Z = 1;
+
 export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
@@ -20,6 +27,7 @@ export class GameScene {
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
 	private rayLight!: BABYLON.SpotLight;
+	private rayCenter!: BABYLON.Vector3;
 	private shadowGen!: BABYLON.ShadowGenerator;
 	private colyseusSDK!: COLYSEUS.Client;
 	private input!: InputManager;
@@ -98,6 +106,7 @@ export class GameScene {
 		this.scene.activeCamera = this.camera;
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
+		this.rayCenter = new BABYLON.Vector3(0, strikeY, 0);
 
 		// Lumière clé INCLINÉE (comme un soleil) mais visée sur le point d'impact
 		// (position = impact - direction * H) : la flaque reste centrée sous le
@@ -206,29 +215,49 @@ export class GameScene {
 	private initTerrainFollow() {
 		this.scene.onBeforeRenderObservable.add(() => {
 			const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.05);
+
+			// Le rayon avance tout seul (il ne suit PAS le joueur).
+			this.rayCenter.x += RAY_DIR_X * RAY_SPEED * dt;
+			this.rayCenter.z += RAY_DIR_Z * RAY_SPEED * dt;
+			this.rayCenter.y = this.world.height(this.rayCenter.x, this.rayCenter.z);
+
+			// Zone accessible = cercle de rayon ACCESS_RADIUS autour du rayon : le
+			// joueur y est confiné. Quand le rayon s'éloigne, le bord arrière le
+			// rattrape et le REPOUSSE (on le ramène sur le cercle).
+			const dx = this.player.position.x - this.rayCenter.x;
+			const dz = this.player.position.z - this.rayCenter.z;
+			const dist = Math.hypot(dx, dz);
+			if (dist > ACCESS_RADIUS) {
+				const k = ACCESS_RADIUS / dist;
+				this.player.position.x = this.rayCenter.x + dx * k;
+				this.player.position.z = this.rayCenter.z + dz * k;
+			}
+
+			// Snap du joueur au sol.
 			const groundY = this.world.height(
 				this.player.position.x,
 				this.player.position.z,
 			);
 			this.player.position.y +=
 				(groundY - this.player.position.y) * Math.min(1, dt * 14);
+
 			this.camera.target.copyFrom(this.player.position);
-			this.chunkManager.update(this.player.position);
+			// Les chunks se génèrent (peu à peu) autour du RAYON, pas du joueur.
+			this.chunkManager.update(this.rayCenter);
 			this.updateRay();
 		});
 	}
 
-	/** Replace le rayon (spot + faisceau) sur le joueur, posé au sol. */
+	/** Place le rayon (spot + faisceau) sur sa position courante, posé au sol. */
 	private updateRay() {
-		const p = this.player.position;
-		const groundY = this.world.height(p.x, p.z);
-		this.sunRay.setStrike(p.x, groundY, p.z);
+		const r = this.rayCenter;
+		this.sunRay.setStrike(r.x, r.y, r.z);
 		// La lumière reste visée sur l'impact : position = impact - direction * H.
 		const d = this.rayLight.direction;
 		this.rayLight.position.set(
-			p.x - d.x * SUN_H,
-			groundY - d.y * SUN_H,
-			p.z - d.z * SUN_H,
+			r.x - d.x * SUN_H,
+			r.y - d.y * SUN_H,
+			r.z - d.z * SUN_H,
 		);
 	}
 
