@@ -9,7 +9,7 @@ const RAY_SPEED = 1;
 const RAY_DIR_X = 0;
 const RAY_DIR_Z = 1;
 
-export class MapSystem {
+export class MapGenerator {
 	private scene: Scene;
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;

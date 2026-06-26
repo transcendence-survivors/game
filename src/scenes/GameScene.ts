@@ -10,6 +10,7 @@ import {
 	type MovementState,
 } from '../../../shared-package';
 import type { GameState } from '@transcendence/game-shared';
+import { MapGenerator } from '../MapGenerator';
 
 const FORWARD_KEY = 'w';
 const BACKWARD_KEY = 's';
@@ -25,7 +26,7 @@ export class GameScene {
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
 	private room!: COLYSEUS.Room<GameState>;
-	// private mapGen!:;
+	private mapGen!: MapGenerator;
 
 	//TODO remove later
 	private ground!: BABYLON.Mesh;
@@ -65,6 +66,7 @@ export class GameScene {
 
 	dispose() {
 		this.scene.dispose();
+		this.mapGen.dispose();
 	}
 
 	getScene() {
@@ -90,13 +92,14 @@ export class GameScene {
 			this.scene,
 		);
 		this.light.intensity = 0.5;
-		this.ground = BABYLON.MeshBuilder.CreateGround(
-			'ground',
-			{ width: 30, height: 30 },
-			this.scene,
-		);
-		this.ground.position.y = 0;
-		this.ground.rotation.x = 0;
+		// this.ground = BABYLON.MeshBuilder.CreateGround(
+		// 	'ground',
+		// 	{ width: 30, height: 30 },
+		// 	this.scene,
+		// );
+		// this.ground.position.y = 0;
+		// this.ground.rotation.x = 0;
+		this.mapGen = new MapGenerator(this.scene);
 		return this.scene;
 	}
 
@@ -135,6 +138,7 @@ export class GameScene {
 			// 	sendAccumulator = 0;
 			// }
 			this.room.send('move', input);
+			this.mapGen.update(deltaTime, this.player);
 		});
 	}
 
@@ -144,7 +148,8 @@ export class GameScene {
 			this.scene,
 		);
 		const model = result.meshes[0];
-		model.position = new BABYLON.Vector3(0, 0, 0);
+		const startY = this.mapGen.getGroundHeight(0, 0);
+		model.position = new BABYLON.Vector3(0, startY, 0);
 		model.scaling = new BABYLON.Vector3(1, 1, 1);
 		model.isVisible = true;
 		this.camera.lockedTarget = model;
@@ -152,6 +157,7 @@ export class GameScene {
 		this.walkAnim = result.animationGroups[0];
 		this.walkAnim.stop();
 		model.rotationQuaternion = null;
+		this.mapGen.addShadowCaster(model);
 	}
 
 	async addRemotePlayer(sessionId: string) {
@@ -163,6 +169,7 @@ export class GameScene {
 		model.rotationQuaternion = null;
 		this.remotePlayers.set(sessionId, model);
 		result.animationGroups[0].stop();
+		this.mapGen.addShadowCaster(model);
 		return model;
 	}
 
