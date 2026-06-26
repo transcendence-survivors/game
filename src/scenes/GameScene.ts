@@ -28,9 +28,6 @@ export class GameScene {
 	private room!: COLYSEUS.Room<GameState>;
 	private mapGen!: MapGenerator;
 
-	//TODO remove later
-	private ground!: BABYLON.Mesh;
-
 	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
 	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
 
