@@ -1,4 +1,4 @@
-import type { Engine, Light, Scene } from '@babylonjs/core';
+import type { Engine, Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
@@ -20,12 +20,15 @@ export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
 	private camera!: BABYLON.FollowCamera;
-	private light!: Light;
-	private ground!: BABYLON.Mesh;
+	private light!: BABYLON.Light;
 	private colyseusSDK!: COLYSEUS.Client;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
 	private room!: COLYSEUS.Room<GameState>;
+	// private mapGen!:;
+
+	//TODO remove later
+	private ground!: BABYLON.Mesh;
 
 	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
 	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
