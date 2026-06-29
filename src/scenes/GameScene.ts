@@ -10,7 +10,7 @@ import {
 	type MovementState,
 } from '../../../shared-package';
 import type { GameState } from '@transcendence/game-shared';
-import { MapGenerator } from '../MapGenerator';
+import { MapGenerator } from '../map/MapGenerator';
 
 const FORWARD_KEY = 'w';
 const BACKWARD_KEY = 's';
@@ -89,15 +89,6 @@ export class GameScene {
 			this.scene,
 		);
 		this.light.intensity = 0.5;
-		// this.ground = BABYLON.MeshBuilder.CreateGround(
-		// 	'ground',
-		// 	{ width: 30, height: 30 },
-		// 	this.scene,
-		// );
-		// this.ground.position.y = 0;
-		// this.ground.rotation.x = 0;
-		this.mapGen = new MapGenerator(this.scene);
-		return this.scene;
 	}
 
 	initInput() {
@@ -135,7 +126,17 @@ export class GameScene {
 			// 	sendAccumulator = 0;
 			// }
 			this.room.send('move', input);
-			this.mapGen.update(deltaTime, this.player);
+			if (this.mapGen && this.room?.state) {
+				const { rayX, rayY, rayZ } = this.room.state;
+				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
+				const groundY = this.mapGen.getGroundHeight(
+					this.player.position.x,
+					this.player.position.z,
+				);
+				this.player.position.y +=
+					(groundY - this.player.position.y) *
+					Math.min(1, deltaTime * 14);
+			}
 		});
 	}
 
@@ -166,6 +167,7 @@ export class GameScene {
 		model.rotationQuaternion = null;
 		this.remotePlayers.set(sessionId, model);
 		result.animationGroups[0].stop();
+		this.remotePlayerAnims.set(sessionId, result.animationGroups[0]);
 		this.mapGen.addShadowCaster(model);
 		return model;
 	}
@@ -182,6 +184,15 @@ export class GameScene {
 		try {
 			this.colyseusSDK = new COLYSEUS.Client('ws://localhost:4000');
 			this.room = await this.colyseusSDK.joinOrCreate('game');
+			await new Promise<void>((resolve) => {
+				this.room.onMessage(
+					'worldSeed',
+					({ seed }: { seed: number }) => {
+						this.mapGen = new MapGenerator(this.scene, seed);
+						resolve();
+					},
+				);
+			});
 		} catch (error) {
 			console.log('ERROR SUUUUUUUUUUUUU');
 		}
@@ -269,6 +280,10 @@ export class GameScene {
 					mesh.position.x = player.x;
 					mesh.position.z = player.z;
 					mesh.rotation.y = player.rotationY + Math.PI;
+					mesh.position.y = this.mapGen.getGroundHeight(
+						player.x,
+						player.z,
+					);
 					const anim = this.remotePlayerAnims.get(sessionId);
 					if (anim) {
 						if (player.animState === 'moving') anim.play(true);

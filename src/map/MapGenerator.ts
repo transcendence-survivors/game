@@ -2,12 +2,7 @@ import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import { World, ChunkManager } from './world';
 import { SunRayVolumetric } from './effects/SunRayVolumetric';
-
-const SUN_H = 150;
-const ACCESS_RADIUS = 128;
-const RAY_SPEED = 1;
-const RAY_DIR_X = 0;
-const RAY_DIR_Z = 1;
+import { SUN_H } from '../../../shared-package/src';
 
 export class MapGenerator {
 	private scene: Scene;
@@ -16,11 +11,11 @@ export class MapGenerator {
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
 	private rayLight!: BABYLON.SpotLight;
-	private rayCenter!: BABYLON.Vector3;
 	private shadowGen!: BABYLON.ShadowGenerator;
 
-	constructor(scene: Scene) {
+	constructor(scene: Scene, seed: number) {
 		this.scene = scene;
+		this.world = new World(seed);
 		this.init();
 	}
 
@@ -38,11 +33,8 @@ export class MapGenerator {
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
 		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
 
-		this.world = new World(Math.floor(Math.random() * 1e9));
-
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
-		this.rayCenter = new BABYLON.Vector3(0, strikeY, 0);
 
 		const sunDir = new BABYLON.Vector3(0.4, -0.82, 0.3);
 		this.rayLight = new BABYLON.SpotLight(
@@ -94,27 +86,15 @@ export class MapGenerator {
 		});
 	}
 
-	update(dt: number, player: BABYLON.AbstractMesh) {
-		this.rayCenter.x += RAY_DIR_X * RAY_SPEED * dt;
-		this.rayCenter.z += RAY_DIR_Z * RAY_SPEED * dt;
-		this.rayCenter.y = this.world.height(
-			this.rayCenter.x,
-			this.rayCenter.z,
+	syncFromRoom(rayX: number, rayY: number, rayZ: number) {
+		this.sunRay.setStrike(rayX, rayY, rayZ);
+		const d = this.rayLight.direction;
+		this.rayLight.position.set(
+			rayX - d.x * SUN_H,
+			rayY - d.y * SUN_H,
+			rayZ - d.z * SUN_H,
 		);
-		const dx = player.position.x - this.rayCenter.x;
-		const dz = player.position.z - this.rayCenter.z;
-		const dist = Math.hypot(dx, dz);
-		if (dist > ACCESS_RADIUS) {
-			const k = ACCESS_RADIUS / dist;
-			player.position.x = this.rayCenter.x + dx * k;
-			player.position.z = this.rayCenter.z + dz * k;
-		}
-		const groundY = this.world.height(player.position.x, player.position.z);
-		player.position.y +=
-			(groundY - player.position.y) * Math.min(1, dt * 14);
-
-		this.chunkManager.update(this.rayCenter);
-		this.updateRay();
+		this.chunkManager.update(new BABYLON.Vector3(rayX, rayY, rayZ));
 	}
 
 	getGroundHeight(x: number, z: number): number {
@@ -123,17 +103,6 @@ export class MapGenerator {
 
 	addShadowCaster(mesh: BABYLON.AbstractMesh) {
 		this.shadowGen.addShadowCaster(mesh);
-	}
-
-	private updateRay() {
-		const r = this.rayCenter;
-		this.sunRay.setStrike(r.x, r.y, r.z);
-		const d = this.rayLight.direction;
-		this.rayLight.position.set(
-			r.x - d.x * SUN_H,
-			r.y - d.y * SUN_H,
-			r.z - d.z * SUN_H,
-		);
 	}
 
 	dispose() {
