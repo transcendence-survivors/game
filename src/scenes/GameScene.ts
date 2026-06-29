@@ -28,6 +28,10 @@ export class GameScene {
 	private room!: COLYSEUS.Room<GameState>;
 	private mapGen!: MapGenerator;
 
+	private remoteTargets: Map<
+		string,
+		{ x: number; z: number; rotationY: number }
+	> = new Map();
 	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
 	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
 
@@ -137,6 +141,7 @@ export class GameScene {
 					(groundY - this.player.position.y) *
 					Math.min(1, deltaTime * 14);
 			}
+			this.updateRemotePlayers(deltaTime);
 		});
 	}
 
@@ -172,12 +177,41 @@ export class GameScene {
 		return model;
 	}
 
+	updateRemotePlayers(deltaTime: number) {
+		const lerpFactor = Math.min(1, deltaTime * 10);
+		for (const [sessionId, mesh] of this.remotePlayers) {
+			const target = this.remoteTargets.get(sessionId);
+			if (!target) continue;
+			const targetPos = new BABYLON.Vector3(
+				target.x,
+				mesh.position.y,
+				target.z,
+			);
+			const newPos = BABYLON.Vector3.Lerp(
+				mesh.position,
+				targetPos,
+				lerpFactor,
+			);
+			mesh.position.x = newPos.x;
+			mesh.position.z = newPos.z;
+			mesh.position.y = this.mapGen.getGroundHeight(newPos.x, newPos.z);
+			const targetRotation = target.rotationY + Math.PI;
+			mesh.rotation.y = BABYLON.Scalar.LerpAngle(
+				mesh.rotation.y,
+				targetRotation,
+				lerpFactor,
+			);
+		}
+	}
+
 	removeRemotePlayer(sessionId: string) {
 		const mesh = this.remotePlayers.get(sessionId);
 		if (mesh) {
 			mesh.dispose();
 			this.remotePlayers.delete(sessionId);
 		}
+		this.remoteTargets.delete(sessionId);
+		this.remotePlayerAnims.delete(sessionId);
 	}
 
 	async connectToServer() {
@@ -276,14 +310,24 @@ export class GameScene {
 				});
 			} else {
 				const mesh = await this.addRemotePlayer(sessionId);
+				this.remoteTargets.set(sessionId, {
+					x: player.x,
+					rotationY: player.rotationY,
+					z: player.z,
+				});
+				mesh.position.x = player.x;
+				mesh.position.z = player.z;
+				mesh.position.y = this.mapGen.getGroundHeight(
+					player.x,
+					player.z,
+				);
+				mesh.rotation.y = player.rotationY + Math.PI;
 				callbacks.onChange(player, () => {
-					mesh.position.x = player.x;
-					mesh.position.z = player.z;
-					mesh.rotation.y = player.rotationY + Math.PI;
-					mesh.position.y = this.mapGen.getGroundHeight(
-						player.x,
-						player.z,
-					);
+					this.remoteTargets.set(sessionId, {
+						x: player.x,
+						z: player.z,
+						rotationY: player.rotationY,
+					});
 					const anim = this.remotePlayerAnims.get(sessionId);
 					if (anim) {
 						if (player.animState === 'moving') anim.play(true);
