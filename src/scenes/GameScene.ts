@@ -216,7 +216,8 @@ export class GameScene {
 
 	async connectToServer() {
 		try {
-			this.colyseusSDK = new COLYSEUS.Client('ws://localhost:4000');
+			const host = window.location.hostname;
+			this.colyseusSDK = new COLYSEUS.Client(`ws://${host}:4000`);
 			this.room = await this.colyseusSDK.joinOrCreate('game');
 			await new Promise<void>((resolve) => {
 				this.room.onMessage(
@@ -228,7 +229,7 @@ export class GameScene {
 				);
 			});
 		} catch (error) {
-			console.log('ERROR SUUUUUUUUUUUUU');
+			console.log(error);
 		}
 	}
 
