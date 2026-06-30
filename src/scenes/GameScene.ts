@@ -44,7 +44,7 @@ export class GameScene {
 	private async init() {
 		try {
 			this.createScene();
-			this.debugMenu = new DebugMenu();
+			this.debugMenu = new DebugMenu(this.engine);
 			this.debugMenu.initGUI();
 			this.server = new ServerOrchestrator(this.scene);
 			await this.server.connect();
@@ -140,6 +140,7 @@ export class GameScene {
 					Math.min(1, deltaTime * 14);
 			}
 			this.server.updateRemotePlayers(deltaTime);
+			this.debugMenu.updateDebugMenu(this.player);
 		});
 	}
 
