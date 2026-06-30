@@ -12,6 +12,7 @@ import type { GameState } from '@transcendence/game-shared';
 import { MapGenerator } from '../map/MapGenerator';
 import { DebugMenu } from '../DebugMenu';
 import { ServerOrchestrator } from '../ServerOrchestrator';
+import { getCameraYaw } from '../../../shared-package/src/states/GameState';
 
 const FORWARD_KEY = 'w';
 const BACKWARD_KEY = 's';
@@ -150,7 +151,10 @@ export class GameScene {
 				z: this.player.position.z,
 				rotationY: this.player.rotation.y,
 			};
-			const newState = applyMovement(currentState, input);
+			const cameraYaw = getCameraYaw(
+				this.camera.getDirection(BABYLON.Vector3.Forward()),
+			);
+			const newState = applyMovement(currentState, input, cameraYaw);
 			this.player.position.x = newState.x;
 			this.player.position.z = newState.z;
 			this.player.rotation.y = newState.rotationY;
