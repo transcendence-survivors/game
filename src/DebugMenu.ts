@@ -20,8 +20,11 @@ export class DebugMenu {
 		const ui = GUI.AdvancedDynamicTexture.CreateFullscreenUI('UI');
 		const debugMenu = new GUI.Rectangle('debugMenu');
 
-		debugMenu.width = '400px';
-		debugMenu.height = '600px';
+		ui.renderAtIdealSize = true;
+		ui.idealWidth = 1920;
+		ui.idealHeight = 1080;
+		debugMenu.width = '22%';
+		debugMenu.height = '40%';
 		debugMenu.cornerRadius = 10;
 		debugMenu.thickness = 1;
 		debugMenu.color = 'white';

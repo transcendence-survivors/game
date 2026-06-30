@@ -21,7 +21,7 @@ const RIGHT_KEY = 'd';
 export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
-	private camera!: BABYLON.FollowCamera;
+	private camera!: BABYLON.ArcRotateCamera;
 	private light!: BABYLON.Light;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
@@ -44,6 +44,7 @@ export class GameScene {
 	private async init() {
 		try {
 			this.createScene();
+			this.createCamera();
 			this.debugMenu = new DebugMenu(this.engine);
 			this.debugMenu.initGUI();
 			this.server = new ServerOrchestrator(this.scene);
@@ -72,19 +73,50 @@ export class GameScene {
 		return this.scene;
 	}
 
-	private createScene() {
-		this.scene = new BABYLON.Scene(this.engine);
-		this.camera = new BABYLON.FollowCamera(
+	private createCamera() {
+		this.camera = new BABYLON.ArcRotateCamera(
 			'Player-Camera',
-			new BABYLON.Vector3(0, 10, -10),
+			-Math.PI / 2,
+			1.0,
+			10,
+			new BABYLON.Vector3(0, 0, 0),
 			this.scene,
 		);
-		this.camera.radius = 5;
-		this.camera.heightOffset = 5;
-		this.camera.rotationOffset = 180;
-		this.camera.cameraAcceleration = 0.05;
-		this.camera.maxCameraSpeed = 2;
-		this.camera.attachControl(true);
+		this.camera.inputs.clear();
+		this.camera.lowerBetaLimit = 0.2;
+		this.camera.upperBetaLimit = 1.4;
+		this.camera.lowerRadiusLimit = 5;
+		this.camera.upperRadiusLimit = 20;
+		this.camera.inertia = 0.85;
+		this.camera.checkCollisions = true;
+		this.scene.activeCamera = this.camera;
+		this.camera.fov = 1.5;
+
+		const canvas = this.scene.getEngine().getRenderingCanvas();
+
+		canvas?.addEventListener('click', () => {
+			canvas.requestPointerLock();
+		});
+
+		const sensitivity = 0.0025;
+
+		document.addEventListener('mousemove', (e) => {
+			if (document.pointerLockElement === canvas) {
+				this.camera.alpha -= e.movementX * sensitivity;
+				this.camera.beta -= e.movementY * sensitivity;
+				this.camera.beta = Math.max(
+					this.camera.lowerBetaLimit as number,
+					Math.min(
+						this.camera.upperBetaLimit as number,
+						this.camera.beta,
+					),
+				);
+			}
+		});
+	}
+
+	private createScene() {
+		this.scene = new BABYLON.Scene(this.engine);
 		this.light = new BABYLON.HemisphericLight(
 			'Light',
 			new BABYLON.Vector3(0, 1, 0),
@@ -140,6 +172,7 @@ export class GameScene {
 					Math.min(1, deltaTime * 14);
 			}
 			this.server.updateRemotePlayers(deltaTime);
+			this.camera.target.copyFrom(this.player.position);
 			this.debugMenu.updateDebugMenu(this.player);
 		});
 	}
