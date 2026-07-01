@@ -135,6 +135,9 @@ export class GameScene {
 			const deltaTime = (now - lastTime) / 1000;
 			lastTime = now;
 			// sendAccumulator += deltaTime;
+			const cameraYaw = getCameraYaw(
+				this.camera.getDirection(BABYLON.Vector3.Forward()),
+			);
 			const input: MoveInput = {
 				seq: ++this.seq,
 				forward: this.input.isPressed(FORWARD_KEY),
@@ -142,6 +145,8 @@ export class GameScene {
 				right: this.input.isPressed(RIGHT_KEY),
 				left: this.input.isPressed(LEFT_KEY),
 				deltaTime,
+				// Le serveur rejoue applyMovement avec ce yaw pour rester autoritatif.
+				cameraYaw,
 			};
 			const moving =
 				input.forward || input.backward || input.right || input.left;
@@ -151,15 +156,13 @@ export class GameScene {
 				z: this.player.position.z,
 				rotationY: this.player.rotation.y,
 			};
-			const cameraYaw = getCameraYaw(
-				this.camera.getDirection(BABYLON.Vector3.Forward()),
-			);
 			const newState = applyMovement(currentState, input, cameraYaw);
-			if (this.mapGen) {
-				this.mapGen.advanceRay(deltaTime);
-				// Les ténèbres bornent la zone jouable au disque autour du rayon :
-				// hors de ce rayon, le joueur est repoussé sur le bord — y compris
-				// quand c'est le rayon qui avance vers lui plutôt que l'inverse.
+			// Le rayon est autoritatif serveur : on lit sa position dans l'état de
+			// la room, on recale halo/lumière/chunks dessus, puis on prédit le clamp
+			// de zone (le serveur le réapplique et réconcilie).
+			if (this.mapGen && this.room?.state) {
+				const { rayX, rayY, rayZ } = this.room.state;
+				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
 				const clamped = this.mapGen.clampToZone(newState.x, newState.z);
 				newState.x = clamped.x;
 				newState.z = clamped.z;

@@ -133,7 +133,7 @@ export class ServerOrchestrator {
 		};
 
 		for (const input of this.pendingInputs) {
-			state = applyMovement(state, input);
+			state = applyMovement(state, input, input.cameraYaw);
 		}
 
 		this.player.position.x = state.x;
