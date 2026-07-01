@@ -8,8 +8,10 @@ export class MapGenerator {
 	/** Rayon (unités monde) de la zone éclairée jouable — même valeur autoritative
 	 * que le serveur (shared) pour que la prédiction client colle au clamp serveur. */
 	readonly ZONE_RADIUS = ACCESS_RADIUS;
-	/** Hauteur de la lumière du rayon au-dessus du point d'impact (sur l'axe). */
-	private readonly BEAM_LIGHT_H = 45;
+	/** Hauteur de la lumière du rayon au-dessus du point d'impact (sur l'axe).
+	 * Assez haute pour que les reliefs projettent des ombres courtes et nettes
+	 * (une source trop basse crée d'énormes ombres crénelées). */
+	private readonly BEAM_LIGHT_H = 95;
 
 	private scene: Scene;
 	private world!: World;
@@ -62,23 +64,27 @@ export class MapGenerator {
 		);
 		this.rayLight.diffuse = beamColor;
 		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		// Seule source de la scène (aucun ambient) → intensité un peu relevée.
-		this.rayLight.intensity = 9;
-		this.rayLight.range = this.ZONE_RADIUS + 12;
+		// Seule source de la scène (aucun ambient).
+		this.rayLight.intensity = 13;
+		// Portée = atteint le bord de zone depuis la nouvelle hauteur de source.
+		this.rayLight.range = this.BEAM_LIGHT_H + this.ZONE_RADIUS - 40;
 		this.rayLight.falloffType = BABYLON.Light.FALLOFF_STANDARD;
 
-		// Shadow map cube (lumière ponctuelle) : 1024/face suffit, l'ombre est nette
-		// grâce au PCF et n'est re-rasterisée qu'une frame sur deux.
-		this.shadowGen = new BABYLON.ShadowGenerator(1024, this.rayLight);
+		// Cube shadow map 2048/face : bord d'ombre bien plus net (le crénelage en
+		// escalier venait d'un 1024 étalé sur tout le champ de la lumière).
+		this.shadowGen = new BABYLON.ShadowGenerator(2048, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
 		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
-		this.shadowGen.bias = 0.0015;
-		this.shadowGen.normalBias = 0.2;
-		// Ombres franches : plus d'ambient pour les délaver, l'ombre portée doit
-		// être bien marquée (le rayon est la seule source).
-		this.shadowGen.setDarkness(0.0);
-		// Le terrain est figé (freezeWorldMatrix) et le point d'impact du rayon
-		// bouge lentement : re-rasteriser la shadow map 1 frame sur 2 suffit.
+		this.shadowGen.bias = 0.0016;
+		// normalBias plus fort : évite le « peter-panning » / l'acné sur les faces
+		// obliques du terrain low-poly.
+		this.shadowGen.normalBias = 0.7;
+		// Un poil de lumière conservée : l'ombre lit comme de l'herbe sombre plutôt
+		// qu'un aplat noir troué.
+		this.shadowGen.setDarkness(0.12);
+		// 1 frame sur 2 : le rayon avance lentement, le décalage d'ombre entre deux
+		// refresh est imperceptible et ça évite de re-rasteriser 6 faces 2048 à
+		// chaque frame.
 		const shadowMap = this.shadowGen.getShadowMap();
 		if (shadowMap) shadowMap.refreshRate = 2;
 
