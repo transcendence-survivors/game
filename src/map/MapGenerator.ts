@@ -17,6 +17,8 @@ export class MapGenerator {
 	private rayLight!: BABYLON.SpotLight;
 	private shadowGen!: BABYLON.ShadowGenerator;
 	private rayPos!: BABYLON.Vector3;
+	/** Rideau cylindrique lumineux marquant la frontière de la zone accessible. */
+	private zoneBoundary!: BABYLON.Mesh;
 
 	constructor(scene: Scene, seed: number) {
 		this.scene = scene;
@@ -110,6 +112,8 @@ export class MapGenerator {
 			new BABYLON.FxaaPostProcess('fxaa', 1.0, this.scene.activeCamera);
 		}
 
+		this.createZoneBoundary(strikeY);
+
 		// Lumières et matériaux de la scène sont figés une fois pour toutes ici :
 		// plus besoin du scan qui remarque tous les matériaux "dirty" au moindre
 		// changement de lumière/scène.
@@ -117,10 +121,61 @@ export class MapGenerator {
 	}
 
 	/**
+	 * Frontière visible de la zone accessible : un rideau cylindrique lumineux au
+	 * rayon `ZONE_RADIUS`, translucide et fondu vers le haut, ouvert (sans faces
+	 * haut/bas). Il suit le rayon (voir {@link syncFromRoom}) et matérialise la
+	 * limite où commencent les ténèbres, même quand le relief masque le sol.
+	 */
+	private createZoneBoundary(baseY: number) {
+		const wall = BABYLON.MeshBuilder.CreateCylinder(
+			'zoneBoundary',
+			{
+				diameter: this.ZONE_RADIUS * 2,
+				height: 140,
+				tessellation: 96,
+				cap: BABYLON.Mesh.NO_CAP,
+			},
+			this.scene,
+		);
+
+		// Dégradé d'opacité vertical : dense au sol, s'efface vers le haut.
+		const grad = new BABYLON.DynamicTexture(
+			'zoneBoundaryGrad',
+			{ width: 4, height: 128 },
+			this.scene,
+			false,
+		);
+		const ctx = grad.getContext() as unknown as CanvasRenderingContext2D;
+		const g = ctx.createLinearGradient(0, 128, 0, 0);
+		g.addColorStop(0, 'rgba(255,255,255,0.85)');
+		g.addColorStop(1, 'rgba(255,255,255,0)');
+		ctx.fillStyle = g;
+		ctx.fillRect(0, 0, 4, 128);
+		grad.update();
+		grad.hasAlpha = true;
+
+		const mat = new BABYLON.StandardMaterial('zoneBoundaryMat', this.scene);
+		mat.disableLighting = true;
+		mat.emissiveColor = new BABYLON.Color3(1.0, 0.55, 0.25);
+		mat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+		mat.opacityTexture = grad;
+		mat.backFaceCulling = false; // visible depuis l'intérieur du disque
+		mat.alphaMode = BABYLON.Constants.ALPHA_ADD; // lueur additive
+		wall.material = mat;
+
+		wall.isPickable = false;
+		wall.receiveShadows = false;
+		wall.doNotSyncBoundingInfo = true;
+		wall.alwaysSelectAsActiveMesh = true; // grand + toujours pertinent
+		wall.position.set(0, baseY, 0);
+		this.zoneBoundary = wall;
+	}
+
+	/**
 	 * Recale le rayon sur la position autoritative reçue du serveur : déplace le
-	 * halo volumétrique et la lumière, mémorise le centre pour le clamp de zone,
-	 * et déclenche le streaming des chunks autour du rayon (le joueur reste borné
-	 * dans ce disque, donc toujours dans la zone chargée).
+	 * halo volumétrique, la lumière et la frontière de zone, mémorise le centre
+	 * pour le clamp, et déclenche le streaming des chunks autour du rayon (le
+	 * joueur reste borné dans ce disque, donc toujours dans la zone chargée).
 	 */
 	syncFromRoom(rayX: number, rayY: number, rayZ: number) {
 		this.rayPos.set(rayX, rayY, rayZ);
@@ -131,6 +186,7 @@ export class MapGenerator {
 			rayY - d.y * SUN_H,
 			rayZ - d.z * SUN_H,
 		);
+		this.zoneBoundary.position.set(rayX, rayY, rayZ);
 		this.chunkManager.update(this.rayPos);
 	}
 
@@ -162,5 +218,7 @@ export class MapGenerator {
 		this.shadowGen.dispose();
 		this.rayLight.dispose();
 		this.terrainMaterial.dispose();
+		this.zoneBoundary.material?.dispose();
+		this.zoneBoundary.dispose();
 	}
 }
