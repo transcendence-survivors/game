@@ -56,11 +56,18 @@ export class MapGenerator {
 		this.rayLight.shadowMinZ = 40;
 		this.rayLight.shadowMaxZ = 300;
 
-		this.shadowGen = new BABYLON.ShadowGenerator(4096, this.rayLight);
+		// 1024 + PCF qualité basse : le rendu est en flat shading low-poly, une
+		// shadow map 4K ne s'y voit pas mais coûtait ~16x plus cher à rasteriser.
+		this.shadowGen = new BABYLON.ShadowGenerator(1024, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
+		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_LOW;
 		this.shadowGen.bias = 0.0015;
 		this.shadowGen.normalBias = 0.2;
 		this.shadowGen.setDarkness(0.0);
+		// Le terrain est figé (freezeWorldMatrix) et le point d'impact du rayon
+		// bouge rarement : pas besoin de re-rasteriser la shadow map 60x/s.
+		const shadowMap = this.shadowGen.getShadowMap();
+		if (shadowMap) shadowMap.refreshRate = 2;
 
 		this.chunkManager = new ChunkManager(
 			this.scene,

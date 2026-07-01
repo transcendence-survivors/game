@@ -39,9 +39,9 @@ function mixC(a: WorldColor, b: WorldColor, t: number): WorldColor {
  */
 export class World {
 	readonly seed: number;
-	readonly CELL = 24;
+	readonly CELL = 12;
 	readonly N = 4;
-	readonly STEP = 20;
+	readonly STEP = 10;
 	readonly TIERS = 8;
 
 	private noise: Noise2D;

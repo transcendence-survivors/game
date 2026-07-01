@@ -20,6 +20,7 @@ import {
 	Constants,
 	DynamicTexture,
 	Effect,
+	GPUParticleSystem,
 	ParticleSystem,
 	PostProcess,
 } from '@babylonjs/core';
@@ -112,8 +113,11 @@ void main(void){
 	}
 	if (t1 <= t0) { gl_FragColor = scene; return; }
 
-	// March the visible segment, integrating dusty density.
-	const int STEPS = 24;
+	// March the visible segment, integrating dusty density. STEPS halved and a
+	// single noise octave (vs. 2 blended) vs. the original: this loop runs per
+	// pixel inside the beam's screen projection, so its cost dominates the
+	// whole post-process — each vnoise() call alone is 8 hash3() evaluations.
+	const int STEPS = 12;
 	float stepLen = (t1 - t0) / float(STEPS);
 	float time = uBeamShape.w;
 	float accum = 0.0;
@@ -124,7 +128,7 @@ void main(void){
 		float vy = clamp((p.y - yMin) / uBeamShape.y, 0.0, 1.0);
 		float vFade = smoothstep(0.0, 0.05, vy) * (1.0 - smoothstep(0.5, 1.0, vy));
 		vec3 np = p * 0.09; np.y -= time * 0.7;
-		float dust = 0.5 + 0.7 * (vnoise(np) * 0.7 + vnoise(np * 2.7 + 11.0) * 0.3);
+		float dust = 0.5 + 0.7 * vnoise(np);
 		accum += core * vFade * dust * stepLen;
 	}
 	float glow = clamp(accum * 0.02 * uBeamShape.z, 0.0, 2.0);
@@ -151,7 +155,7 @@ export class SunRayVolumetric {
 	private readonly scene: Scene;
 	private readonly post: PostProcess;
 	/** Floating illuminated dust drifting up inside the shaft (gives it volume). */
-	private readonly dust: ParticleSystem;
+	private readonly dust: ParticleSystem | GPUParticleSystem;
 	/** Shaft base centre in world space (xz follow the zone; y = strikeY). */
 	private readonly center: Vector3;
 	private readonly color: Color3;
@@ -204,8 +208,13 @@ export class SunRayVolumetric {
 		// Warm motes drifting slowly UP inside the shaft, additive so they only add
 		// glow — gives the beam real volume and life. The emitter IS `center`, so
 		// the dust column follows the strike point (see setStrike).
+		// GPU-simulated when available: offloads per-particle update off the main
+		// thread entirely, which a plain ParticleSystem does not.
 		const r = this.radius;
-		this.dust = new ParticleSystem('sun-ray-dust', 600, scene);
+		const DUST_CAPACITY = 300;
+		this.dust = GPUParticleSystem.IsSupported
+			? new GPUParticleSystem('sun-ray-dust', { capacity: DUST_CAPACITY }, scene)
+			: new ParticleSystem('sun-ray-dust', DUST_CAPACITY, scene);
 		this.dust.particleTexture = radialSprite(scene, 'sun-ray-dust-tex');
 		this.dust.emitter = this.center;
 		this.dust.minEmitBox = new Vec3(-r, 0, -r);
@@ -217,7 +226,7 @@ export class SunRayVolumetric {
 		this.dust.maxSize = 1.0;
 		this.dust.minLifeTime = 4.0;
 		this.dust.maxLifeTime = 9.0;
-		this.dust.emitRate = 140;
+		this.dust.emitRate = 70;
 		this.dust.blendMode = ParticleSystem.BLENDMODE_ADD;
 		this.dust.gravity = new Vec3(0, 0.6, 0); // gentle upward drift
 		this.dust.direction1 = new Vec3(-0.15, 0.6, -0.15);
