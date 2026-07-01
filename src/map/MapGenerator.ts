@@ -2,19 +2,21 @@ import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import { World, ChunkManager } from './world';
 import { SunRayVolumetric } from './effects/SunRayVolumetric';
-import { SUN_H, ACCESS_RADIUS } from '../../../shared-package/src';
+import { ACCESS_RADIUS } from '../../../shared-package/src';
 
 export class MapGenerator {
 	/** Rayon (unités monde) de la zone éclairée jouable — même valeur autoritative
 	 * que le serveur (shared) pour que la prédiction client colle au clamp serveur. */
 	readonly ZONE_RADIUS = ACCESS_RADIUS;
+	/** Hauteur de la lumière du rayon au-dessus du point d'impact (sur l'axe). */
+	private readonly BEAM_LIGHT_H = 45;
 
 	private scene: Scene;
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
-	private rayLight!: BABYLON.SpotLight;
+	private rayLight!: BABYLON.PointLight;
 	private shadowGen!: BABYLON.ShadowGenerator;
 	private rayPos!: BABYLON.Vector3;
 	/** Rideau cylindrique lumineux marquant la frontière de la zone accessible. */
@@ -48,35 +50,32 @@ export class MapGenerator {
 		const strikeY = this.world.height(0, 0);
 		this.rayPos = new BABYLON.Vector3(0, strikeY, 0);
 
-		const sunDir = new BABYLON.Vector3(0.4, -0.82, 0.3);
-		this.rayLight = new BABYLON.SpotLight(
+		// Lumière ponctuelle SUR l'axe du rayon (et non un soleil incliné) : elle
+		// rayonne depuis le faisceau, donc les murs face au rayon sont éclairés et
+		// les ombres fuient radialement vers l'extérieur. Son falloff par distance
+		// (`range` ≈ rayon de zone) éteint progressivement l'éclairage à l'approche
+		// de la limite, au lieu d'une coupure nette.
+		this.rayLight = new BABYLON.PointLight(
 			'SunRayLight',
-			new BABYLON.Vector3(
-				-sunDir.x * SUN_H,
-				strikeY - sunDir.y * SUN_H,
-				-sunDir.z * SUN_H,
-			),
-			sunDir,
-			2.0,
-			7,
+			new BABYLON.Vector3(0, strikeY + this.BEAM_LIGHT_H, 0),
 			this.scene,
 		);
 		this.rayLight.diffuse = beamColor;
 		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		this.rayLight.intensity = 70;
-		this.rayLight.range = 360;
-		this.rayLight.shadowMinZ = 40;
-		this.rayLight.shadowMaxZ = 300;
+		this.rayLight.intensity = 7;
+		this.rayLight.range = this.ZONE_RADIUS + 12;
+		this.rayLight.falloffType = BABYLON.Light.FALLOFF_STANDARD;
 
-		// 2048 + PCF haute qualité : bord d'ombre net et doux (l'ombre crénelée en
-		// dents de scie venait d'une shadow map 1024 en PCF basse qualité étalée sur
-		// toute la portée du rayon). Reste bien moins cher que l'ancien 4096.
-		this.shadowGen = new BABYLON.ShadowGenerator(2048, this.rayLight);
+		// Shadow map cube (lumière ponctuelle) : 1024/face suffit, l'ombre est nette
+		// grâce au PCF et n'est re-rasterisée qu'une frame sur deux.
+		this.shadowGen = new BABYLON.ShadowGenerator(1024, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
 		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
 		this.shadowGen.bias = 0.0015;
 		this.shadowGen.normalBias = 0.2;
-		this.shadowGen.setDarkness(0.0);
+		// Ombre atténuée (60 % de lumière conservée) plutôt qu'un noir absolu :
+		// évite les triangles d'ombre durs et irréalistes sous les reliefs.
+		this.shadowGen.setDarkness(0.6);
 		// Le terrain est figé (freezeWorldMatrix) et le point d'impact du rayon
 		// bouge lentement : re-rasteriser la shadow map 1 frame sur 2 suffit.
 		const shadowMap = this.shadowGen.getShadowMap();
@@ -180,12 +179,7 @@ export class MapGenerator {
 	syncFromRoom(rayX: number, rayY: number, rayZ: number) {
 		this.rayPos.set(rayX, rayY, rayZ);
 		this.sunRay.setStrike(rayX, rayY, rayZ);
-		const d = this.rayLight.direction;
-		this.rayLight.position.set(
-			rayX - d.x * SUN_H,
-			rayY - d.y * SUN_H,
-			rayZ - d.z * SUN_H,
-		);
+		this.rayLight.position.set(rayX, rayY + this.BEAM_LIGHT_H, rayZ);
 		this.zoneBoundary.position.set(rayX, rayY, rayZ);
 		this.chunkManager.update(this.rayPos);
 	}

@@ -124,11 +124,13 @@ export class GameScene {
 			this.scene,
 		);
 		this.light = hemi;
-		this.light.intensity = 0.5;
-		// Lumière d'ambiance directionnelle : teinte froide venant du ciel, rebond
-		// chaud et sombre venant du sol → dégradé plus naturel qu'un aplat gris.
-		hemi.diffuse = new BABYLON.Color3(0.7, 0.78, 0.95);
-		hemi.groundColor = new BABYLON.Color3(0.28, 0.24, 0.2);
+		// Fill d'ambiance TRÈS bas : juste de quoi que les faces à l'ombre ne soient
+		// pas d'un noir absolu. Volontairement faible pour ne pas aplatir le dégradé
+		// radial de la lumière du rayon (une hémisphérique forte éclairait tout le
+		// terrain uniformément et supprimait tout falloff).
+		this.light.intensity = 0.3;
+		hemi.diffuse = new BABYLON.Color3(0.6, 0.68, 0.85);
+		hemi.groundColor = new BABYLON.Color3(0.25, 0.22, 0.18);
 
 		// Tone mapping filmique (ACES) : comprime les hautes lumières du spotlight
 		// (qui sinon cramaient le sol en blanc pur en rendu linéaire) et donne des
