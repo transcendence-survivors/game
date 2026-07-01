@@ -32,6 +32,10 @@ export class MapGenerator {
 		);
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
 		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+		// Jamais modifié après coup et partagé par toutes les chunks de terrain
+		// (jusqu'à ~80 en vue) : geler évite de revalider ses defines/bindings
+		// à chaque mesh à chaque frame.
+		this.terrainMaterial.freeze();
 
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
@@ -91,6 +95,11 @@ export class MapGenerator {
 			height: 140,
 			intensity: 1.0,
 		});
+
+		// Lumières et matériaux de la scène sont figés une fois pour toutes ici :
+		// plus besoin du scan qui remarque tous les matériaux "dirty" au moindre
+		// changement de lumière/scène.
+		this.scene.blockMaterialDirtyMechanism = true;
 	}
 
 	syncFromRoom(rayX: number, rayY: number, rayZ: number) {
