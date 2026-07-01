@@ -155,6 +155,15 @@ export class GameScene {
 				this.camera.getDirection(BABYLON.Vector3.Forward()),
 			);
 			const newState = applyMovement(currentState, input, cameraYaw);
+			if (this.mapGen) {
+				this.mapGen.advanceRay(deltaTime);
+				// Les ténèbres bornent la zone jouable au disque autour du rayon :
+				// hors de ce rayon, le joueur est repoussé sur le bord — y compris
+				// quand c'est le rayon qui avance vers lui plutôt que l'inverse.
+				const clamped = this.mapGen.clampToZone(newState.x, newState.z);
+				newState.x = clamped.x;
+				newState.z = clamped.z;
+			}
 			this.player.position.x = newState.x;
 			this.player.position.z = newState.z;
 			this.player.rotation.y = newState.rotationY;
@@ -164,9 +173,7 @@ export class GameScene {
 			// 	sendAccumulator = 0;
 			// }
 			this.room.send('move', input);
-			if (this.mapGen && this.room?.state) {
-				const { rayX, rayY, rayZ } = this.room.state;
-				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
+			if (this.mapGen) {
 				const groundY = this.mapGen.getGroundHeight(
 					this.player.position.x,
 					this.player.position.z,

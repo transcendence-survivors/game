@@ -5,6 +5,14 @@ import { SunRayVolumetric } from './effects/SunRayVolumetric';
 import { SUN_H } from '../../../shared-package/src';
 
 export class MapGenerator {
+	/** Rayon (en unités monde) de la zone éclairée jouable autour du rayon. */
+	readonly ZONE_RADIUS = 20;
+	/** Vitesse de déplacement du rayon (unités/s), trajectoire en ligne droite. */
+	private readonly raySpeed = 1.5;
+	/** Direction horizontale fixe du rayon (normalisée) : pas de serveur pour
+	 * l'instant, le rayon est simulé côté client. */
+	private readonly rayDir = new BABYLON.Vector2(1, 0);
+
 	private scene: Scene;
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;
@@ -12,6 +20,7 @@ export class MapGenerator {
 	private sunRay!: SunRayVolumetric;
 	private rayLight!: BABYLON.SpotLight;
 	private shadowGen!: BABYLON.ShadowGenerator;
+	private rayPos!: BABYLON.Vector3;
 
 	constructor(scene: Scene, seed: number) {
 		this.scene = scene;
@@ -39,6 +48,7 @@ export class MapGenerator {
 
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
+		this.rayPos = new BABYLON.Vector3(0, strikeY, 0);
 
 		const sunDir = new BABYLON.Vector3(0.4, -0.82, 0.3);
 		this.rayLight = new BABYLON.SpotLight(
@@ -102,15 +112,40 @@ export class MapGenerator {
 		this.scene.blockMaterialDirtyMechanism = true;
 	}
 
-	syncFromRoom(rayX: number, rayY: number, rayZ: number) {
-		this.sunRay.setStrike(rayX, rayY, rayZ);
+	/**
+	 * Avance le rayon en ligne droite, fait suivre lumière/halo et déclenche le
+	 * streaming des chunks dans sa direction. Purement simulé côté client pour
+	 * l'instant (pas d'autorité serveur sur la position du rayon).
+	 */
+	advanceRay(deltaTime: number): BABYLON.Vector3 {
+		this.rayPos.x += this.rayDir.x * this.raySpeed * deltaTime;
+		this.rayPos.z += this.rayDir.y * this.raySpeed * deltaTime;
+		this.rayPos.y = this.world.height(this.rayPos.x, this.rayPos.z);
+
+		this.sunRay.setStrike(this.rayPos.x, this.rayPos.y, this.rayPos.z);
 		const d = this.rayLight.direction;
 		this.rayLight.position.set(
-			rayX - d.x * SUN_H,
-			rayY - d.y * SUN_H,
-			rayZ - d.z * SUN_H,
+			this.rayPos.x - d.x * SUN_H,
+			this.rayPos.y - d.y * SUN_H,
+			this.rayPos.z - d.z * SUN_H,
 		);
-		this.chunkManager.update(new BABYLON.Vector3(rayX, rayY, rayZ));
+		this.chunkManager.update(this.rayPos);
+		return this.rayPos;
+	}
+
+	/**
+	 * Projette (x, z) sur le bord du disque de rayon `ZONE_RADIUS` autour du
+	 * rayon si le point en est sorti — les ténèbres repoussent le joueur, y
+	 * compris quand c'est le rayon qui avance vers lui.
+	 */
+	clampToZone(x: number, z: number): { x: number; z: number } {
+		const ox = x - this.rayPos.x;
+		const oz = z - this.rayPos.z;
+		const distSq = ox * ox + oz * oz;
+		if (distSq <= this.ZONE_RADIUS * this.ZONE_RADIUS) return { x, z };
+		const dist = Math.sqrt(distSq);
+		const scale = this.ZONE_RADIUS / dist;
+		return { x: this.rayPos.x + ox * scale, z: this.rayPos.z + oz * scale };
 	}
 
 	getGroundHeight(x: number, z: number): number {
