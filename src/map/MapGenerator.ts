@@ -62,7 +62,8 @@ export class MapGenerator {
 		);
 		this.rayLight.diffuse = beamColor;
 		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		this.rayLight.intensity = 7;
+		// Seule source de la scène (aucun ambient) → intensité un peu relevée.
+		this.rayLight.intensity = 9;
 		this.rayLight.range = this.ZONE_RADIUS + 12;
 		this.rayLight.falloffType = BABYLON.Light.FALLOFF_STANDARD;
 
@@ -73,9 +74,9 @@ export class MapGenerator {
 		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
 		this.shadowGen.bias = 0.0015;
 		this.shadowGen.normalBias = 0.2;
-		// Ombre atténuée (60 % de lumière conservée) plutôt qu'un noir absolu :
-		// évite les triangles d'ombre durs et irréalistes sous les reliefs.
-		this.shadowGen.setDarkness(0.6);
+		// Ombres franches : plus d'ambient pour les délaver, l'ombre portée doit
+		// être bien marquée (le rayon est la seule source).
+		this.shadowGen.setDarkness(0.0);
 		// Le terrain est figé (freezeWorldMatrix) et le point d'impact du rayon
 		// bouge lentement : re-rasteriser la shadow map 1 frame sur 2 suffit.
 		const shadowMap = this.shadowGen.getShadowMap();

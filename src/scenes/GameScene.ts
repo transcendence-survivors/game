@@ -23,7 +23,6 @@ export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
 	private camera!: BABYLON.ArcRotateCamera;
-	private light!: BABYLON.Light;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
 	private room!: COLYSEUS.Room<GameState>;
@@ -118,21 +117,11 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		const hemi = new BABYLON.HemisphericLight(
-			'Light',
-			new BABYLON.Vector3(0, 1, 0),
-			this.scene,
-		);
-		this.light = hemi;
-		// Fill d'ambiance TRÈS bas : juste de quoi que les faces à l'ombre ne soient
-		// pas d'un noir absolu. Volontairement faible pour ne pas aplatir le dégradé
-		// radial de la lumière du rayon (une hémisphérique forte éclairait tout le
-		// terrain uniformément et supprimait tout falloff).
-		this.light.intensity = 0.3;
-		hemi.diffuse = new BABYLON.Color3(0.6, 0.68, 0.85);
-		hemi.groundColor = new BABYLON.Color3(0.25, 0.22, 0.18);
+		// Aucune lumière d'ambiance : le rayon (lumière ponctuelle de MapGenerator)
+		// est la SEULE source. Les faces non atteintes et les ombres portées sont
+		// donc franches, au lieu d'être délavées par un fill hémisphérique.
 
-		// Tone mapping filmique (ACES) : comprime les hautes lumières du spotlight
+		// Tone mapping filmique (ACES) : comprime les hautes lumières du rayon
 		// (qui sinon cramaient le sol en blanc pur en rendu linéaire) et donne des
 		// dégradés d'éclairage plus réalistes.
 		const ip = this.scene.imageProcessingConfiguration;
