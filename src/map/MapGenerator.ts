@@ -8,15 +8,15 @@ export class MapGenerator {
 	/** Rayon (unités monde) de la zone éclairée jouable — même valeur autoritative
 	 * que le serveur (shared) pour que la prédiction client colle au clamp serveur. */
 	readonly ZONE_RADIUS = ACCESS_RADIUS;
-	/** Hauteur de la lumière du rayon au-dessus du point d'impact (sur l'axe). */
-	private readonly BEAM_LIGHT_H = 45;
+	/** Hauteur de la source du rayon au-dessus du point d'impact (sur l'axe). */
+	private readonly BEAM_LIGHT_H = 190;
 
 	private scene: Scene;
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
-	private rayLight!: BABYLON.PointLight;
+	private rayLight!: BABYLON.SpotLight;
 	private shadowGen!: BABYLON.ShadowGenerator;
 	private rayPos!: BABYLON.Vector3;
 	/** Rideau cylindrique lumineux marquant la frontière de la zone accessible. */
@@ -50,37 +50,41 @@ export class MapGenerator {
 		const strikeY = this.world.height(0, 0);
 		this.rayPos = new BABYLON.Vector3(0, strikeY, 0);
 
-		// Lumière ponctuelle SUR l'axe du rayon (et non un soleil incliné) : elle
-		// rayonne depuis le faisceau, donc les murs face au rayon sont éclairés et
-		// les ombres fuient radialement vers l'extérieur. Son falloff par distance
-		// (`range` ≈ rayon de zone) éteint progressivement l'éclairage à l'approche
-		// de la limite, au lieu d'une coupure nette.
-		this.rayLight = new BABYLON.PointLight(
+		// Spotlight pile au-dessus du point d'impact, pointant DROIT vers le bas
+		// (0,-1,0) — la lumière descend le long du faisceau. Résultat : les ombres
+		// portées fuient radialement vers l'extérieur (cohérent, jamais « vers le
+		// rayon »), le cône + son `exponent` fait décroître l'éclairage vers le
+		// bord de la zone (falloff radial), et une shadow map 2D de spot est nette
+		// et STABLE, contrairement à la cube map bruitée d'une lumière ponctuelle.
+		this.rayLight = new BABYLON.SpotLight(
 			'SunRayLight',
 			new BABYLON.Vector3(0, strikeY + this.BEAM_LIGHT_H, 0),
+			new BABYLON.Vector3(0, -1, 0),
+			1.35,
+			6,
 			this.scene,
 		);
 		this.rayLight.diffuse = beamColor;
 		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		// Seule source de la scène (aucun ambient) → intensité un peu relevée.
-		this.rayLight.intensity = 9;
-		this.rayLight.range = this.ZONE_RADIUS + 12;
-		this.rayLight.falloffType = BABYLON.Light.FALLOFF_STANDARD;
+		this.rayLight.intensity = 110;
+		this.rayLight.range = this.BEAM_LIGHT_H + this.ZONE_RADIUS + 40;
+		this.rayLight.shadowMinZ = this.BEAM_LIGHT_H * 0.45;
+		this.rayLight.shadowMaxZ = this.BEAM_LIGHT_H + 90;
 
-		// Shadow map cube (lumière ponctuelle) : 1024/face suffit, l'ombre est nette
-		// grâce au PCF et n'est re-rasterisée qu'une frame sur deux.
-		this.shadowGen = new BABYLON.ShadowGenerator(1024, this.rayLight);
+		// Shadow map 2D nette et stable (spot) : 2048 + PCF haute qualité, re-
+		// rasterisée une frame sur deux (terrain figé, rayon lent).
+		this.shadowGen = new BABYLON.ShadowGenerator(2048, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
 		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
-		this.shadowGen.bias = 0.0015;
-		this.shadowGen.normalBias = 0.2;
-		// Ombres franches : plus d'ambient pour les délaver, l'ombre portée doit
-		// être bien marquée (le rayon est la seule source).
-		this.shadowGen.setDarkness(0.0);
-		// Le terrain est figé (freezeWorldMatrix) et le point d'impact du rayon
-		// bouge lentement : re-rasteriser la shadow map 1 frame sur 2 suffit.
+		this.shadowGen.bias = 0.0018;
+		this.shadowGen.normalBias = 0.6;
+		// Franches mais pas un trou noir absolu (10 % de lumière conservée) : lit
+		// comme de l'herbe à l'ombre plutôt qu'un vide.
+		this.shadowGen.setDarkness(0.1);
+		// Re-rasterisée chaque frame : la source suit le rayon en continu, un
+		// refresh 1 frame sur 2 ferait « sauter » l'ombre (scintillement).
 		const shadowMap = this.shadowGen.getShadowMap();
-		if (shadowMap) shadowMap.refreshRate = 2;
+		if (shadowMap) shadowMap.refreshRate = 1;
 
 		this.chunkManager = new ChunkManager(
 			this.scene,
