@@ -180,10 +180,9 @@ export class SunRayVolumetric {
 			'sunRayVol',
 			['uTanFov', 'uPlanes', 'uInvView', 'uCamPos', 'uBeamCenter', 'uBeamShape', 'uColor'],
 			['depthSampler'],
-			// Ratio < 1 : le raymarch tourne sur un quart des pixels (0.5x0.5),
-			// puis Babylon réétire le résultat. Invisible sur un glow diffus,
-			// et ça multiplie directement le gain des STEPS/bruit déjà réduits.
-			0.5,
+			// Pleine résolution : faisceau net (le sous-échantillonnage 0.5 rendait
+			// les bords du shaft flous/pixelisés une fois réétirés).
+			1.0,
 			scene.activeCamera,
 		);
 		this.post.onApplyObservable.add((effect) => {

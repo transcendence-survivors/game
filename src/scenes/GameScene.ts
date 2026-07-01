@@ -118,12 +118,27 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		this.light = new BABYLON.HemisphericLight(
+		const hemi = new BABYLON.HemisphericLight(
 			'Light',
 			new BABYLON.Vector3(0, 1, 0),
 			this.scene,
 		);
+		this.light = hemi;
 		this.light.intensity = 0.5;
+		// Lumière d'ambiance directionnelle : teinte froide venant du ciel, rebond
+		// chaud et sombre venant du sol → dégradé plus naturel qu'un aplat gris.
+		hemi.diffuse = new BABYLON.Color3(0.7, 0.78, 0.95);
+		hemi.groundColor = new BABYLON.Color3(0.28, 0.24, 0.2);
+
+		// Tone mapping filmique (ACES) : comprime les hautes lumières du spotlight
+		// (qui sinon cramaient le sol en blanc pur en rendu linéaire) et donne des
+		// dégradés d'éclairage plus réalistes.
+		const ip = this.scene.imageProcessingConfiguration;
+		ip.toneMappingEnabled = true;
+		ip.toneMappingType =
+			BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+		ip.exposure = 1.2;
+		ip.contrast = 1.1;
 	}
 
 	private initInput() {

@@ -66,16 +66,17 @@ export class MapGenerator {
 		this.rayLight.shadowMinZ = 40;
 		this.rayLight.shadowMaxZ = 300;
 
-		// 1024 + PCF qualité basse : le rendu est en flat shading low-poly, une
-		// shadow map 4K ne s'y voit pas mais coûtait ~16x plus cher à rasteriser.
-		this.shadowGen = new BABYLON.ShadowGenerator(1024, this.rayLight);
+		// 2048 + PCF haute qualité : bord d'ombre net et doux (l'ombre crénelée en
+		// dents de scie venait d'une shadow map 1024 en PCF basse qualité étalée sur
+		// toute la portée du rayon). Reste bien moins cher que l'ancien 4096.
+		this.shadowGen = new BABYLON.ShadowGenerator(2048, this.rayLight);
 		this.shadowGen.usePercentageCloserFiltering = true;
-		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_LOW;
+		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
 		this.shadowGen.bias = 0.0015;
 		this.shadowGen.normalBias = 0.2;
 		this.shadowGen.setDarkness(0.0);
 		// Le terrain est figé (freezeWorldMatrix) et le point d'impact du rayon
-		// bouge rarement : pas besoin de re-rasteriser la shadow map 60x/s.
+		// bouge lentement : re-rasteriser la shadow map 1 frame sur 2 suffit.
 		const shadowMap = this.shadowGen.getShadowMap();
 		if (shadowMap) shadowMap.refreshRate = 2;
 
@@ -101,6 +102,13 @@ export class MapGenerator {
 			height: 140,
 			intensity: 1.0,
 		});
+
+		// FXAA en dernière passe (créé après le shaft, donc appliqué après lui) :
+		// lisse les bords géométriques crénelés, compatible avec la chaîne de
+		// post-process du rayon contrairement au MSAA du framebuffer principal.
+		if (this.scene.activeCamera) {
+			new BABYLON.FxaaPostProcess('fxaa', 1.0, this.scene.activeCamera);
+		}
 
 		// Lumières et matériaux de la scène sont figés une fois pour toutes ici :
 		// plus besoin du scan qui remarque tous les matériaux "dirty" au moindre

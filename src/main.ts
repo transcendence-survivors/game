@@ -6,7 +6,14 @@ import { MainMenuScene } from './scenes/MainMenuScene';
 function mainEntryPoint() {
 	const canvas = document.getElementById('game') as HTMLCanvasElement;
 
-	const engine = new BABYLON.Engine(canvas);
+	// antialias + adaptToDeviceRatio (4e arg) : rend à la résolution native de
+	// l'écran (fin du flou pixelisé sur écran HiDPI) et lisse les bords géométriques.
+	const engine = new BABYLON.Engine(
+		canvas,
+		true,
+		{ stencil: true, preserveDrawingBuffer: true },
+		true,
+	);
 	let currentScene: MainMenuScene | GameScene;
 	const mainMenuScene = new MainMenuScene(engine, async (action) => {
 		if (action === 'play') {
