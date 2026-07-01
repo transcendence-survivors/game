@@ -53,6 +53,7 @@ export class GameScene {
 			this.mapGen = this.server.getMapGen();
 			this.room = this.server.getRoom();
 			await this.addPlayer();
+			this.server.setPlayer(this.player);
 			this.input = new InputManager(this.scene);
 			this.initInput();
 			this.server.listenToState();
@@ -135,6 +136,9 @@ export class GameScene {
 			const deltaTime = (now - lastTime) / 1000;
 			lastTime = now;
 			// sendAccumulator += deltaTime;
+			const cameraYaw = getCameraYaw(
+				this.camera.getDirection(BABYLON.Vector3.Forward()),
+			);
 			const input: MoveInput = {
 				seq: ++this.seq,
 				forward: this.input.isPressed(FORWARD_KEY),
@@ -142,6 +146,7 @@ export class GameScene {
 				right: this.input.isPressed(RIGHT_KEY),
 				left: this.input.isPressed(LEFT_KEY),
 				deltaTime,
+				cameraYaw,
 			};
 			const moving =
 				input.forward || input.backward || input.right || input.left;
@@ -151,14 +156,16 @@ export class GameScene {
 				z: this.player.position.z,
 				rotationY: this.player.rotation.y,
 			};
-			const cameraYaw = getCameraYaw(
-				this.camera.getDirection(BABYLON.Vector3.Forward()),
+			const newState = applyMovement(
+				currentState,
+				input,
+				input.cameraYaw,
 			);
-			const newState = applyMovement(currentState, input, cameraYaw);
 			this.player.position.x = newState.x;
 			this.player.position.z = newState.z;
 			this.player.rotation.y = newState.rotationY;
 			this.pendingInputs.push(input);
+			this.server.pushPendingInput(input);
 			// if (sendAccumulator >= SEND_RATE) {
 			// 	if (this.room) this.room.send('move', input);
 			// 	sendAccumulator = 0;
