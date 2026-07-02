@@ -101,6 +101,10 @@ export class MapGenerator {
 		return this.world.height(x, z);
 	}
 
+	getWorld() {
+		return this.world;
+	}
+
 	addShadowCaster(mesh: BABYLON.AbstractMesh) {
 		this.shadowGen.addShadowCaster(mesh);
 	}

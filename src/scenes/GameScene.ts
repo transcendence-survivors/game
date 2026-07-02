@@ -4,7 +4,7 @@ import * as COLYSEUS from '@colyseus/sdk';
 import '@babylonjs/loaders/glTF/2.0';
 import { InputManager } from '../InputManager';
 import {
-	applyMovement,
+	resolveTerrainCollision,
 	type MoveInput,
 	type MovementState,
 } from '../../../shared-package';
@@ -12,12 +12,17 @@ import type { GameState } from '@transcendence/game-shared';
 import { MapGenerator } from '../map/MapGenerator';
 import { DebugMenu } from '../DebugMenu';
 import { ServerOrchestrator } from '../ServerOrchestrator';
-import { getCameraYaw } from '../../../shared-package/src/states/GameState';
+import {
+	applyHorizontalMovement,
+	applyVerticalMovement,
+	getCameraYaw,
+} from '../../../shared-package/src/states/GameState';
 
 const FORWARD_KEY = 'w';
 const BACKWARD_KEY = 's';
 const LEFT_KEY = 'a';
 const RIGHT_KEY = 'd';
+const JUMP_KEY = ' ';
 
 export class GameScene {
 	private scene!: Scene;
@@ -34,6 +39,7 @@ export class GameScene {
 
 	private pendingInputs: MoveInput[] = [];
 	private seq = 0;
+	private jumpKeyWasPressed = false;
 
 	private server!: ServerOrchestrator;
 
@@ -129,58 +135,81 @@ export class GameScene {
 
 	private initInput() {
 		let lastTime = performance.now();
-		// let sendAccumulator = 0;
-		// const SEND_RATE = 1 / 20;
 		this.scene.onBeforeRenderObservable.add(() => {
 			const now = performance.now();
 			const deltaTime = (now - lastTime) / 1000;
 			lastTime = now;
-			// sendAccumulator += deltaTime;
 			const cameraYaw = getCameraYaw(
 				this.camera.getDirection(BABYLON.Vector3.Forward()),
 			);
+			const jumpKeyPressed = this.input.isPressed(JUMP_KEY);
+			const jumpTriggered = jumpKeyPressed && !this.jumpKeyWasPressed;
+			this.jumpKeyWasPressed = jumpKeyPressed;
 			const input: MoveInput = {
 				seq: ++this.seq,
 				forward: this.input.isPressed(FORWARD_KEY),
 				backward: this.input.isPressed(BACKWARD_KEY),
 				right: this.input.isPressed(RIGHT_KEY),
 				left: this.input.isPressed(LEFT_KEY),
+				jump: jumpTriggered,
 				deltaTime,
 				cameraYaw,
 			};
 			const moving =
 				input.forward || input.backward || input.right || input.left;
 			moving ? this.walkAnim.play() : this.walkAnim.stop();
-			const currentState: MovementState = {
-				x: this.player.position.x,
-				z: this.player.position.z,
-				rotationY: this.player.rotation.y,
-			};
-			const newState = applyMovement(
+			const currentState = this.server.getMovementState();
+			const world = this.mapGen.getWorld();
+			const horizontalMove = applyHorizontalMovement(
 				currentState,
 				input,
 				input.cameraYaw,
 			);
+			const groundHeight = world.height(
+				horizontalMove.x,
+				horizontalMove.z,
+			);
+			const verticalMove = applyVerticalMovement(
+				currentState.y,
+				currentState.velocityY,
+				currentState.isGrounded,
+				groundHeight,
+				input,
+			);
+			const proposed: MovementState = {
+				x: horizontalMove.x,
+				z: horizontalMove.z,
+				rotationY: horizontalMove.rotationY,
+				y: verticalMove.y,
+				velocityY: verticalMove.velocityY,
+				isGrounded: verticalMove.isGrounded,
+			};
+			const resolved = resolveTerrainCollision(
+				world,
+				{
+					x: currentState.x,
+					z: currentState.z,
+				},
+				{ x: proposed.x, z: proposed.z },
+				currentState.y,
+			);
+			const newState: MovementState = {
+				...proposed,
+				x: resolved.x,
+				z: resolved.z,
+				y: Math.max(proposed.y, world.height(resolved.x, resolved.z)),
+			};
+			this.server.setMovementState(newState);
 			this.player.position.x = newState.x;
+			this.player.position.y = newState.y;
 			this.player.position.z = newState.z;
 			this.player.rotation.y = newState.rotationY;
 			this.pendingInputs.push(input);
 			this.server.pushPendingInput(input);
-			// if (sendAccumulator >= SEND_RATE) {
-			// 	if (this.room) this.room.send('move', input);
-			// 	sendAccumulator = 0;
-			// }
 			this.room.send('move', input);
 			if (this.mapGen && this.room?.state) {
 				const { rayX, rayY, rayZ } = this.room.state;
 				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
-				const groundY = this.mapGen.getGroundHeight(
-					this.player.position.x,
-					this.player.position.z,
-				);
-				this.player.position.y +=
-					(groundY - this.player.position.y) *
-					Math.min(1, deltaTime * 14);
 			}
 			this.server.updateRemotePlayers(deltaTime);
 			this.camera.target.copyFrom(this.player.position);
@@ -204,5 +233,13 @@ export class GameScene {
 		this.walkAnim.stop();
 		model.rotationQuaternion = null;
 		this.mapGen.addShadowCaster(model);
+		this.server.setMovementState({
+			x: 0,
+			y: startY,
+			z: 0,
+			rotationY: 0,
+			velocityY: 0,
+			isGrounded: true,
+		});
 	}
 }

@@ -2,7 +2,9 @@ import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
 import { MapGenerator } from './map/MapGenerator';
 import {
-	applyMovement,
+	applyHorizontalMovement,
+	applyVerticalMovement,
+	resolveTerrainCollision,
 	type GameState,
 	type MoveInput,
 	type MovementState,
@@ -22,6 +24,15 @@ export class ServerOrchestrator {
 	private player!: BABYLON.AbstractMesh;
 	private pendingInputs: MoveInput[] = [];
 
+	private movementState: MovementState = {
+		x: 0,
+		y: 0,
+		z: 0,
+		rotationY: 0,
+		velocityY: 0,
+		isGrounded: true,
+	};
+
 	constructor(scene: BABYLON.Scene) {
 		this.scene = scene;
 	}
@@ -36,6 +47,14 @@ export class ServerOrchestrator {
 
 	pushPendingInput(input: MoveInput) {
 		this.pendingInputs.push(input);
+	}
+
+	getMovementState() {
+		return this.movementState;
+	}
+
+	setMovementState(state: MovementState) {
+		this.movementState = state;
 	}
 
 	async addRemotePlayer(sessionId: string) {
@@ -119,14 +138,20 @@ export class ServerOrchestrator {
 	reconcile(serverState: {
 		x?: number;
 		z?: number;
+		y?: number;
 		rotationY?: number;
+		velocityY?: number;
+		isGrounded?: boolean;
 		lastProcessedSeq?: number;
 	}) {
 		if (!this.player) return;
 		if (
 			typeof serverState.x !== 'number' ||
+			typeof serverState.y !== 'number' ||
 			typeof serverState.z !== 'number' ||
 			typeof serverState.rotationY !== 'number' ||
+			typeof serverState.velocityY !== 'number' ||
+			typeof serverState.isGrounded !== 'boolean' ||
 			typeof serverState.lastProcessedSeq !== 'number'
 		)
 			return;
@@ -136,15 +161,56 @@ export class ServerOrchestrator {
 
 		let state: MovementState = {
 			x: serverState.x,
+			y: serverState.y,
 			z: serverState.z,
 			rotationY: serverState.rotationY,
+			velocityY: serverState.velocityY,
+			isGrounded: serverState.isGrounded,
 		};
 
-		for (const input of this.pendingInputs) {
-			state = applyMovement(state, input, input.cameraYaw);
-		}
+		const world = this.mapGen.getWorld();
 
+		for (const input of this.pendingInputs) {
+			const horizontalMove = applyHorizontalMovement(
+				state,
+				input,
+				input.cameraYaw,
+			);
+			const groundHeight = world.height(
+				horizontalMove.x,
+				horizontalMove.z,
+			);
+			const verticalMove = applyVerticalMovement(
+				state.y,
+				state.velocityY,
+				state.isGrounded,
+				groundHeight,
+				input,
+			);
+			const proposed: MovementState = {
+				x: horizontalMove.x,
+				z: horizontalMove.z,
+				rotationY: horizontalMove.rotationY,
+				y: verticalMove.y,
+				velocityY: verticalMove.velocityY,
+				isGrounded: verticalMove.isGrounded,
+			};
+			const resolved = resolveTerrainCollision(
+				world,
+				state,
+				proposed,
+				state.y,
+			);
+			state = {
+				...proposed,
+				x: resolved.x,
+				z: resolved.z,
+				y: Math.max(proposed.y, world.height(resolved.x, resolved.z)),
+			};
+		}
+		this.movementState = state;
 		this.player.position.x = state.x;
+		this.player.position.y = state.y;
 		this.player.position.z = state.z;
 		this.player.rotation.y = state.rotationY;
 	}
