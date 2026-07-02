@@ -1,6 +1,6 @@
 import { TerrainChunk } from './TerrainChunk';
 import type { Mesh, Scene, StandardMaterial, Vector3 } from '@babylonjs/core';
-import type { World } from './World';
+import type { World } from '../../../../shared-package/src/world/World';
 
 export interface ChunkManagerOptions {
 	/** Rayon (en chunks) chargé autour du joueur. */
@@ -52,7 +52,8 @@ export class ChunkManager {
 			for (let dz = -this.view; dz <= this.view; dz++)
 				for (let dx = -this.view; dx <= this.view; dx++) {
 					const k = `${cx + dx},${cz + dz}`;
-					if (!this.chunks.has(k)) this.queue.push([cx + dx, cz + dz, k]);
+					if (!this.chunks.has(k))
+						this.queue.push([cx + dx, cz + dz, k]);
 				}
 			for (const [k, c] of this.chunks) {
 				const a = k.split(',');

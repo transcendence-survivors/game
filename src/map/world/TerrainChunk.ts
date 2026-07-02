@@ -1,6 +1,9 @@
 import { Mesh, VertexData } from '@babylonjs/core';
 import type { Scene, StandardMaterial } from '@babylonjs/core';
-import type { World, WorldColor } from './World';
+import type {
+	World,
+	WorldColor,
+} from '../../../../shared-package/src/world/World';
 
 /** Sommet : position (x, y, z) + couleur. */
 type Vtx = readonly [number, number, number, WorldColor];
@@ -67,7 +70,8 @@ export function buildChunkMesh(
 		const cx = by * az - bz * ay;
 		const cy = bz * ax - bx * az;
 		const cz = bx * ay - by * ax;
-		if (cx * nx + cy * ny + cz * nz >= 0) idx.push(vtx(p1), vtx(p2), vtx(p3));
+		if (cx * nx + cy * ny + cz * nz >= 0)
+			idx.push(vtx(p1), vtx(p2), vtx(p3));
 		else idx.push(vtx(p1), vtx(p3), vtx(p2));
 	};
 	const quad = (
