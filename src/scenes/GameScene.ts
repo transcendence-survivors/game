@@ -3,20 +3,20 @@ import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
 import '@babylonjs/loaders/glTF/2.0';
 import { InputManager } from '../InputManager';
-import {
-	resolveTerrainCollision,
-	type MoveInput,
-	type MovementState,
-} from '../../../shared-package';
-import type { GameState } from '@transcendence/game-shared';
 import { MapGenerator } from '../map/MapGenerator';
 import { DebugMenu } from '../DebugMenu';
 import { ServerOrchestrator } from '../ServerOrchestrator';
+
 import {
+	type MoveInput,
+	type MovementState,
+	GameState,
+	getCameraYaw,
+	resolveTerrainCollision,
 	applyHorizontalMovement,
 	applyVerticalMovement,
-	getCameraYaw,
-} from '../../../shared-package/src/states/GameState';
+} from '../../../shared-package';
+//TODO FIX THE @module bug
 
 const FORWARD_KEY = 'w';
 const BACKWARD_KEY = 's';
@@ -165,10 +165,16 @@ export class GameScene {
 				input,
 				input.cameraYaw,
 			);
-			const groundHeight = world.height(
-				horizontalMove.x,
-				horizontalMove.z,
+			const resolved = resolveTerrainCollision(
+				world,
+				{
+					x: currentState.x,
+					z: currentState.z,
+				},
+				{ x: horizontalMove.x, z: horizontalMove.z },
+				currentState.y,
 			);
+			const groundHeight = world.height(resolved.x, resolved.z);
 			const verticalMove = applyVerticalMovement(
 				currentState.y,
 				currentState.velocityY,
@@ -176,28 +182,13 @@ export class GameScene {
 				groundHeight,
 				input,
 			);
-			const proposed: MovementState = {
-				x: horizontalMove.x,
-				z: horizontalMove.z,
+			const newState: MovementState = {
+				x: resolved.x,
+				z: resolved.z,
 				rotationY: horizontalMove.rotationY,
 				y: verticalMove.y,
 				velocityY: verticalMove.velocityY,
 				isGrounded: verticalMove.isGrounded,
-			};
-			const resolved = resolveTerrainCollision(
-				world,
-				{
-					x: currentState.x,
-					z: currentState.z,
-				},
-				{ x: proposed.x, z: proposed.z },
-				currentState.y,
-			);
-			const newState: MovementState = {
-				...proposed,
-				x: resolved.x,
-				z: resolved.z,
-				y: Math.max(proposed.y, world.height(resolved.x, resolved.z)),
 			};
 			this.server.setMovementState(newState);
 			this.player.position.x = newState.x;

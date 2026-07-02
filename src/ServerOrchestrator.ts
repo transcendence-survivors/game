@@ -176,10 +176,13 @@ export class ServerOrchestrator {
 				input,
 				input.cameraYaw,
 			);
-			const groundHeight = world.height(
-				horizontalMove.x,
-				horizontalMove.z,
+			const resolved = resolveTerrainCollision(
+				world,
+				state,
+				horizontalMove,
+				state.y,
 			);
+			const groundHeight = world.height(resolved.x, resolved.z);
 			const verticalMove = applyVerticalMovement(
 				state.y,
 				state.velocityY,
@@ -187,25 +190,13 @@ export class ServerOrchestrator {
 				groundHeight,
 				input,
 			);
-			const proposed: MovementState = {
-				x: horizontalMove.x,
-				z: horizontalMove.z,
-				rotationY: horizontalMove.rotationY,
-				y: verticalMove.y,
-				velocityY: verticalMove.velocityY,
-				isGrounded: verticalMove.isGrounded,
-			};
-			const resolved = resolveTerrainCollision(
-				world,
-				state,
-				proposed,
-				state.y,
-			);
 			state = {
-				...proposed,
 				x: resolved.x,
 				z: resolved.z,
-				y: Math.max(proposed.y, world.height(resolved.x, resolved.z)),
+				y: verticalMove.y,
+				rotationY: horizontalMove.rotationY,
+				velocityY: verticalMove.velocityY,
+				isGrounded: verticalMove.isGrounded,
 			};
 		}
 		this.movementState = state;
