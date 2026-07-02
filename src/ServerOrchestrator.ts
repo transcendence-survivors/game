@@ -30,6 +30,14 @@ export class ServerOrchestrator {
 		await this.connect();
 	}
 
+	setPlayer(player: BABYLON.AbstractMesh) {
+		this.player = player;
+	}
+
+	pushPendingInput(input: MoveInput) {
+		this.pendingInputs.push(input);
+	}
+
 	async addRemotePlayer(sessionId: string) {
 		const result = await BABYLON.ImportMeshAsync(
 			'/models/Player.glb',
@@ -133,7 +141,7 @@ export class ServerOrchestrator {
 		};
 
 		for (const input of this.pendingInputs) {
-			state = applyMovement(state, input);
+			state = applyMovement(state, input, input.cameraYaw);
 		}
 
 		this.player.position.x = state.x;
