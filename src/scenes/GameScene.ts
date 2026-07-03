@@ -33,6 +33,7 @@ export class GameScene {
 	private room!: COLYSEUS.Room<GameState>;
 	private mapGen!: MapGenerator;
 	private debugMenu!: DebugMenu;
+	private light!: BABYLON.Light;
 
 	private walkAnim!: BABYLON.AnimationGroup;
 
@@ -124,12 +125,18 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		const ip = this.scene.imageProcessingConfiguration;
-		ip.toneMappingEnabled = true;
-		ip.toneMappingType =
-			BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
-		ip.exposure = 1.2;
-		ip.contrast = 1.1;
+		// const ip = this.scene.imageProcessingConfiguration;
+		// ip.toneMappingEnabled = true;
+		// ip.toneMappingType =
+		// 	BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+		// ip.exposure = 1.2;
+		// ip.contrast = 1.1;
+		this.light = new BABYLON.HemisphericLight(
+			'Light',
+			new BABYLON.Vector3(0, 40, 0),
+			this.scene,
+		);
+		this.light.intensity = 0.5;
 	}
 
 	private initInput() {
