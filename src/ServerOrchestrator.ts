@@ -23,7 +23,6 @@ export class ServerOrchestrator {
 	private room!: COLYSEUS.Room<GameState>;
 	private player!: BABYLON.AbstractMesh;
 	private pendingInputs: MoveInput[] = [];
-
 	private movementState: MovementState = {
 		x: 0,
 		y: 0,

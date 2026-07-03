@@ -9,8 +9,13 @@ interface DebugStats {
 }
 
 export class DebugMenu {
+	// 10 Hz : largement lisible pour du texte de debug, alors qu'un `.text =`
+	// sur un AdvancedDynamicTexture fullscreen redessine et ré-upload TOUTE
+	// la texture GUI, pas juste la zone modifiée — coûteux à 60 Hz pour rien.
+	private static readonly UPDATE_INTERVAL_MS = 100;
 	private debugStats!: DebugStats;
 	private engine!: BABYLON.Engine;
+	private lastUpdateMs = 0;
 	constructor(engine: BABYLON.Engine) {
 		this.engine = engine;
 		this.initGUI();
@@ -87,6 +92,10 @@ export class DebugMenu {
 	}
 
 	updateDebugMenu(player: BABYLON.AbstractMesh) {
+		const now = performance.now();
+		if (now - this.lastUpdateMs < DebugMenu.UPDATE_INTERVAL_MS) return;
+		this.lastUpdateMs = now;
+
 		const pos = player.position;
 		this.debugStats.position.text = `X:${pos.x.toFixed(2)}, Y:${pos.y.toFixed(2)}, Z:${pos.z.toFixed(2)}`;
 

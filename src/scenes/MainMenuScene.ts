@@ -35,10 +35,7 @@ type MenuButton = {
 	action: MenuAction;
 };
 
-const MENU_BUTTONS: MenuButton[] = [
-	{ label: 'Play', action: 'play' },
-	{ label: 'Settings', action: 'settings' },
-];
+const MENU_BUTTONS: MenuButton[] = [{ label: 'Play', action: 'play' }];
 
 export class MainMenuScene {
 	private scene: Scene;

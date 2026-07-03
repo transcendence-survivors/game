@@ -28,7 +28,6 @@ export class GameScene {
 	private scene!: Scene;
 	private engine: Engine;
 	private camera!: BABYLON.ArcRotateCamera;
-	private light!: BABYLON.Light;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
 	private room!: COLYSEUS.Room<GameState>;
@@ -125,12 +124,12 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		this.light = new BABYLON.HemisphericLight(
-			'Light',
-			new BABYLON.Vector3(0, 1, 0),
-			this.scene,
-		);
-		this.light.intensity = 0.5;
+		const ip = this.scene.imageProcessingConfiguration;
+		ip.toneMappingEnabled = true;
+		ip.toneMappingType =
+			BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+		ip.exposure = 1.2;
+		ip.contrast = 1.1;
 	}
 
 	private initInput() {
