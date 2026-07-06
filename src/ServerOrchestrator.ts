@@ -111,7 +111,7 @@ export class ServerOrchestrator {
 		try {
 			const host = window.location.hostname;
 			this.colyseusSDK = new COLYSEUS.Client(`ws://${host}:4000`);
-			this.room = await this.colyseusSDK.joinOrCreate('game');
+			this.room = await this.colyseusSDK.joinOrCreate('game_room');
 			await new Promise<void>((resolve) => {
 				this.room.onMessage(
 					'worldSeed',
