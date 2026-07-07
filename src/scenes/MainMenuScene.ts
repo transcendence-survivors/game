@@ -28,19 +28,23 @@ const styleSettings = {
 	fontMono: 'JetBrains Mono, ui-monospace, monospace',
 };
 
-export type MenuAction = 'play' | 'settings' | 'quit';
+export type MenuAction = 'play' | 'multiplayer' | 'quit';
 
 type MenuButton = {
 	label: string;
 	action: MenuAction;
 };
 
-const MENU_BUTTONS: MenuButton[] = [{ label: 'Play', action: 'play' }];
+const MENU_BUTTONS: MenuButton[] = [
+	{ label: 'Play', action: 'play' },
+	{ label: 'Multiplayer', action: 'multiplayer' },
+];
 
 export class MainMenuScene {
 	private scene: Scene;
 	private ui: AdvancedDynamicTexture;
 	private onAction: (action: MenuAction) => void;
+	public readonly ready: Promise<void>;
 
 	constructor(engine: Engine, onAction: (action: MenuAction) => void) {
 		this.onAction = onAction;
@@ -50,7 +54,7 @@ export class MainMenuScene {
 			true,
 			this.scene,
 		);
-		this.buildMenu();
+		this.ready = this.buildMenu();
 	}
 
 	render() {
@@ -80,7 +84,7 @@ export class MainMenuScene {
 		return scene;
 	}
 
-	buildMenu() {
+	async buildMenu() {
 		const overlay = new Rectangle('overlay');
 		overlay.width = '100%';
 		overlay.height = '100%';

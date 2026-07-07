@@ -37,15 +37,15 @@ export class GameScene {
 
 	private walkAnim!: BABYLON.AnimationGroup;
 
-	private pendingInputs: MoveInput[] = [];
 	private seq = 0;
 	private jumpKeyWasPressed = false;
 
 	private server!: ServerOrchestrator;
+	public readonly ready: Promise<void>;
 
 	constructor(engine: Engine) {
 		this.engine = engine;
-		this.init();
+		this.ready = this.init();
 	}
 
 	private async init() {
@@ -201,7 +201,6 @@ export class GameScene {
 			this.player.position.y = newState.y;
 			this.player.position.z = newState.z;
 			this.player.rotation.y = newState.rotationY;
-			this.pendingInputs.push(input);
 			this.server.pushPendingInput(input);
 			this.room.send('move', input);
 			if (this.mapGen && this.room?.state) {
