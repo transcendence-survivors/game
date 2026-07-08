@@ -1,14 +1,17 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
+import * as COLYSEUS from '@colyseus/sdk';
 import { NetworkManager } from './NetworkManager';
 import { GameScene } from './scenes/GameScene';
 import { SceneManager } from './SceneManager';
+import type { GameState } from '../../shared-package/src';
 
 export class LobbyScene {
 	private scene: BABYLON.Scene;
 	private advTex!: GUI.AdvancedDynamicTexture;
 	private network: NetworkManager = new NetworkManager();
 	private engine: BABYLON.Engine;
+	private room!: COLYSEUS.Room<GameState>;
 	public readonly ready: Promise<void>;
 
 	constructor(engine: BABYLON.Engine) {
@@ -32,12 +35,17 @@ export class LobbyScene {
 			true,
 			this.scene,
 		);
-		await this.advTex.parseFromURLAsync('/ui/lobby.json');
+		await this.advTex.parseFromURLAsync('/ui/lobby_clean.json');
 		this.linkControls();
 	}
 
 	dispose() {
 		this.scene.dispose();
+		this.advTex.dispose();
+	}
+
+	getRoom() {
+		return this.room;
 	}
 
 	private linkControls() {
@@ -89,17 +97,18 @@ export class LobbyScene {
 			setBusy(true);
 			setStatus('Creating room...');
 			try {
-				this.network.createRoom(roomName);
+				this.room = await this.network.createRoom(roomName);
 				setStatus(`Room "${roomName}" created`);
+				setBusy(false);
+				SceneManager.toGame(this.room);
+				if (this.room) {
+					const gamescene = new GameScene(this.engine, this.room);
+					this.scene.dispose();
+					gamescene.render();
+				}
 			} catch (error) {
 				console.log(error);
 				setStatus('Failed to create room');
-			} finally {
-				setBusy(false);
-				SceneManager.toGame();
-				const gamescene = new GameScene(this.engine);
-				this.scene.dispose();
-				gamescene.render();
 			}
 		});
 
@@ -109,17 +118,18 @@ export class LobbyScene {
 			setBusy(true);
 			setStatus('Joining room...');
 			try {
-				this.network.joinRoomByName(roomName);
+				this.room = await this.network.joinRoomByName(roomName);
 				setStatus(`Joined "${roomName}"`);
+				setBusy(false);
+				SceneManager.toGame(this.room);
+				if (this.room) {
+					const gamescene = new GameScene(this.engine, this.room);
+					this.scene.dispose();
+					gamescene.render();
+				}
 			} catch (error) {
 				console.log(error);
 				setStatus('Failed to join room');
-			} finally {
-				setBusy(false);
-				SceneManager.toGame();
-				const gamescene = new GameScene(this.engine);
-				this.scene.dispose();
-				gamescene.render();
 			}
 		});
 	}

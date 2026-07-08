@@ -30,7 +30,6 @@ export class GameScene {
 	private camera!: BABYLON.ArcRotateCamera;
 	private input!: InputManager;
 	private player!: BABYLON.AbstractMesh;
-	private room!: COLYSEUS.Room<GameState>;
 	private mapGen!: MapGenerator;
 	private debugMenu!: DebugMenu;
 	private light!: BABYLON.Light;
@@ -43,21 +42,20 @@ export class GameScene {
 	private server!: ServerOrchestrator;
 	public readonly ready: Promise<void>;
 
-	constructor(engine: Engine) {
+	constructor(engine: Engine, room: COLYSEUS.Room<GameState>) {
 		this.engine = engine;
-		this.ready = this.init();
+		this.ready = this.init(room);
 	}
 
-	private async init() {
+	private async init(room: COLYSEUS.Room<GameState>) {
 		try {
 			this.createScene();
 			this.createCamera();
 			this.debugMenu = new DebugMenu(this.engine);
 			this.debugMenu.initGUI();
-			this.server = new ServerOrchestrator(this.scene);
+			this.server = new ServerOrchestrator(this.scene, room);
 			await this.server.connect();
 			this.mapGen = this.server.getMapGen();
-			this.room = this.server.getRoom();
 			await this.addPlayer();
 			this.server.setPlayer(this.player);
 			this.input = new InputManager(this.scene);
@@ -202,9 +200,9 @@ export class GameScene {
 			this.player.position.z = newState.z;
 			this.player.rotation.y = newState.rotationY;
 			this.server.pushPendingInput(input);
-			this.room.send('move', input);
-			if (this.mapGen && this.room?.state) {
-				const { rayX, rayY, rayZ } = this.room.state;
+			this.server.send('move', input);
+			if (this.mapGen && this.server.getRoom()?.state) {
+				const { rayX, rayY, rayZ } = this.server.getRoom().state;
 				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
 			}
 			this.server.updateRemotePlayers(deltaTime);

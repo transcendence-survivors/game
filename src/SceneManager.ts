@@ -1,7 +1,9 @@
 import { type Engine } from '@babylonjs/core';
-import { MainMenuScene, type MenuAction } from './scenes/MainMenuScene';
+import { MainMenuScene } from './scenes/MainMenuScene';
 import { GameScene } from './scenes/GameScene';
 import { LobbyScene } from './LobbyScene';
+import * as COLYSEUS from '@colyseus/sdk';
+import type { GameState } from '../../shared-package/src';
 
 export interface ManagedScene {
 	render(): void;
@@ -28,16 +30,11 @@ export class SceneManager {
 	}
 
 	static toMainMenu() {
-		return SceneManager.set(
-			new MainMenuScene(SceneManager.engine, (action: MenuAction) => {
-				if (action === 'play') SceneManager.toGame();
-				if (action === 'multiplayer') SceneManager.toLobby();
-			}),
-		);
+		return SceneManager.set(new MainMenuScene(SceneManager.engine));
 	}
 
-	static toGame() {
-		return SceneManager.set(new GameScene(this.engine));
+	static toGame(room: COLYSEUS.Room<GameState>) {
+		return SceneManager.set(new GameScene(this.engine, room));
 	}
 
 	static toLobby() {

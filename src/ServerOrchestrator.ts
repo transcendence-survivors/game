@@ -15,7 +15,7 @@ export class ServerOrchestrator {
 	private scene!: BABYLON.Scene;
 	private remoteTargets: Map<
 		string,
-		{ x: number; z: number; rotationY: number }
+		{ x: number; z: number; y: number; rotationY: number }
 	> = new Map();
 	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
 	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
@@ -32,8 +32,9 @@ export class ServerOrchestrator {
 		isGrounded: true,
 	};
 
-	constructor(scene: BABYLON.Scene) {
+	constructor(scene: BABYLON.Scene, room: COLYSEUS.Room<GameState>) {
 		this.scene = scene;
+		this.room = room;
 	}
 
 	async init() {
@@ -56,6 +57,10 @@ export class ServerOrchestrator {
 		this.movementState = state;
 	}
 
+	send(message: string, input: MoveInput) {
+		this.room.send(message, input);
+	}
+
 	async addRemotePlayer(sessionId: string) {
 		const result = await BABYLON.ImportMeshAsync(
 			'/models/Player.glb',
@@ -75,19 +80,13 @@ export class ServerOrchestrator {
 		for (const [sessionId, mesh] of this.remotePlayers) {
 			const target = this.remoteTargets.get(sessionId);
 			if (!target) continue;
-			const targetPos = new BABYLON.Vector3(
-				target.x,
-				mesh.position.y,
-				target.z,
-			);
+			const targetPos = new BABYLON.Vector3(target.x, target.y, target.z);
 			const newPos = BABYLON.Vector3.Lerp(
 				mesh.position,
 				targetPos,
 				lerpFactor,
 			);
-			mesh.position.x = newPos.x;
-			mesh.position.z = newPos.z;
-			mesh.position.y = this.mapGen.getGroundHeight(newPos.x, newPos.z);
+			mesh.position.copyFrom(newPos);
 			const targetRotation = target.rotationY + Math.PI;
 			mesh.rotation.y = BABYLON.Scalar.LerpAngle(
 				mesh.rotation.y,
@@ -109,9 +108,6 @@ export class ServerOrchestrator {
 
 	async connect() {
 		try {
-			const host = window.location.hostname;
-			this.colyseusSDK = new COLYSEUS.Client(`ws://${host}:4000`);
-			this.room = await this.colyseusSDK.joinOrCreate('game_room');
 			await new Promise<void>((resolve) => {
 				this.room.onMessage(
 					'worldSeed',
@@ -221,6 +217,7 @@ export class ServerOrchestrator {
 					x: player.x,
 					rotationY: player.rotationY,
 					z: player.z,
+					y: player.y,
 				});
 				mesh.position.x = player.x;
 				mesh.position.z = player.z;
@@ -234,6 +231,7 @@ export class ServerOrchestrator {
 						x: player.x,
 						z: player.z,
 						rotationY: player.rotationY,
+						y: player.y,
 					});
 					const anim = this.remotePlayerAnims.get(sessionId);
 					if (anim) {
