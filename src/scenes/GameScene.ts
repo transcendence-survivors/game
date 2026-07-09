@@ -6,7 +6,6 @@ import { InputManager } from '../InputManager';
 import { MapGenerator } from '../map/MapGenerator';
 import { DebugMenu } from '../DebugMenu';
 import { ServerOrchestrator } from '../ServerOrchestrator';
-
 import {
 	type MoveInput,
 	type MovementState,
@@ -16,6 +15,7 @@ import {
 	applyHorizontalMovement,
 	applyVerticalMovement,
 } from '../../../shared-package';
+import { SettingsMenuRender } from '../settings/SettingsMenuRender';
 //TODO FIX THE @module bug
 
 const FORWARD_KEY = 'w';
@@ -34,6 +34,10 @@ export class GameScene {
 	private debugMenu!: DebugMenu;
 	private light!: BABYLON.Light;
 
+	private settingsOpened: boolean = false;
+
+	private settings!: SettingsMenuRender;
+
 	private walkAnim!: BABYLON.AnimationGroup;
 
 	private seq = 0;
@@ -51,6 +55,13 @@ export class GameScene {
 		try {
 			this.createScene();
 			this.createCamera();
+			this.settings = new SettingsMenuRender(
+				this.engine,
+				this.scene,
+				this.camera,
+			);
+			this.settings.init();
+			this.settings.closeSettings();
 			this.debugMenu = new DebugMenu(this.engine);
 			this.debugMenu.initGUI();
 			this.server = new ServerOrchestrator(this.scene, room);
@@ -101,7 +112,7 @@ export class GameScene {
 		const canvas = this.scene.getEngine().getRenderingCanvas();
 
 		canvas?.addEventListener('click', () => {
-			canvas.requestPointerLock();
+			if (!this.settingsOpened) canvas.requestPointerLock();
 		});
 
 		const sensitivity = 0.0025;
@@ -123,12 +134,6 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		// const ip = this.scene.imageProcessingConfiguration;
-		// ip.toneMappingEnabled = true;
-		// ip.toneMappingType =
-		// 	BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
-		// ip.exposure = 1.2;
-		// ip.contrast = 1.1;
 		this.light = new BABYLON.HemisphericLight(
 			'Light',
 			new BABYLON.Vector3(0, 40, 0),
@@ -208,6 +213,16 @@ export class GameScene {
 			this.server.updateRemotePlayers(deltaTime);
 			this.camera.target.copyFrom(this.player.position);
 			this.debugMenu.updateDebugMenu(this.player);
+		});
+		this.scene.onAfterRenderObservable.add(() => {
+			if (this.input.isPressed('p') && !this.settingsOpened) {
+				this.settings.openSettings();
+				this.settingsOpened = true;
+			}
+			if (this.input.isPressed('p') && this.settingsOpened) {
+				this.settings.closeSettings();
+				this.settingsOpened = false;
+			}
 		});
 	}
 
