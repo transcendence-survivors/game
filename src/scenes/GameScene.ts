@@ -6,6 +6,8 @@ import { InputManager } from '../InputManager';
 import { MapGenerator } from '../map/MapGenerator';
 import { DebugMenu } from '../DebugMenu';
 import { ServerOrchestrator } from '../ServerOrchestrator';
+import { MonsterRenderer } from '../monsters';
+import { PlayerHud } from '../hud/PlayerHud';
 
 import {
 	type MoveInput,
@@ -41,6 +43,8 @@ export class GameScene {
 	private jumpKeyWasPressed = false;
 
 	private server!: ServerOrchestrator;
+	private monsters!: MonsterRenderer;
+	private hud!: PlayerHud;
 	public readonly ready: Promise<void>;
 
 	constructor(engine: Engine) {
@@ -63,6 +67,13 @@ export class GameScene {
 			this.input = new InputManager(this.scene);
 			this.initInput();
 			this.server.listenToState();
+			this.monsters = new MonsterRenderer(
+				this.scene,
+				this.room,
+				this.mapGen,
+			);
+			this.monsters.listen();
+			this.hud = new PlayerHud(this.room);
 		} catch (e) {
 			console.error('init failed', e);
 		}
@@ -73,6 +84,8 @@ export class GameScene {
 	}
 
 	dispose() {
+		this.hud?.dispose();
+		this.monsters?.dispose();
 		this.scene.dispose();
 		this.mapGen.dispose();
 	}
@@ -208,7 +221,9 @@ export class GameScene {
 				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
 			}
 			this.server.updateRemotePlayers(deltaTime);
+			this.monsters?.update(deltaTime);
 			this.camera.target.copyFrom(this.player.position);
+			this.hud?.update();
 			this.debugMenu.updateDebugMenu(this.player);
 		});
 	}
