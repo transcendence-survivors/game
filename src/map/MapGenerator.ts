@@ -2,6 +2,10 @@ import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import { World, ChunkManager } from './world';
 import { SunRayVolumetric } from './effects/SunRayVolumetric';
+import {
+	PlayerAuraPlugin,
+	type AuraInstance,
+} from './effects/PlayerAuraPlugin';
 import { ACCESS_RADIUS } from '../../../shared-package/src';
 
 export class MapGenerator {
@@ -16,6 +20,7 @@ export class MapGenerator {
 	private scene: Scene;
 	private world!: World;
 	private terrainMaterial!: BABYLON.StandardMaterial;
+	private auraPlugin!: PlayerAuraPlugin;
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
 	private rayLight!: BABYLON.PointLight;
@@ -43,10 +48,12 @@ export class MapGenerator {
 		);
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
 		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
-		// Jamais modifié après coup et partagé par toutes les chunks de terrain
-		// (jusqu'à ~80 en vue) : geler évite de revalider ses defines/bindings
-		// à chaque mesh à chaque frame.
-		this.terrainMaterial.freeze();
+		// Auras des joueurs dessinées à même le terrain (voir PlayerAuraPlugin) :
+		// elles épousent le relief car calculées par pixel. Le matériau n'est
+		// donc PAS figé — ses uniforms d'aura doivent être rebindés chaque frame.
+		// `blockMaterialDirtyMechanism` (fin d'init) empêche malgré tout toute
+		// recompilation : on garde le bind par frame, sans le scan « dirty ».
+		this.auraPlugin = new PlayerAuraPlugin(this.terrainMaterial);
 
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
@@ -205,6 +212,11 @@ export class MapGenerator {
 		const dist = Math.sqrt(distSq);
 		const scale = this.ZONE_RADIUS / dist;
 		return { x: this.rayPos.x + ox * scale, z: this.rayPos.z + oz * scale };
+	}
+
+	/** Met à jour le rendu des auras (positions/portées des joueurs) par frame. */
+	updateAuras(auras: readonly AuraInstance[], dtSeconds: number) {
+		this.auraPlugin.update(auras, dtSeconds);
 	}
 
 	getGroundHeight(x: number, z: number): number {

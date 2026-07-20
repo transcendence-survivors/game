@@ -221,6 +221,7 @@ export class GameScene {
 				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
 			}
 			this.server.updateRemotePlayers(deltaTime);
+			this.mapGen.updateAuras(this.server.collectAuras(), deltaTime);
 			this.monsters?.update(deltaTime);
 			this.camera.target.copyFrom(this.player.position);
 			this.hud.update();
