@@ -130,6 +130,23 @@ export class ServerOrchestrator {
 		return this.room;
 	}
 
+	/**
+	 * Position de spawn du joueur local telle que décidée par le serveur, si
+	 * l'état est déjà synchronisé. Renvoie null tant qu'elle n'est pas connue
+	 * (le premier reconcile la fournira alors).
+	 */
+	getLocalSpawn(): { x: number; y: number; z: number } | null {
+		const player = this.room.state?.players?.get(this.room.sessionId);
+		if (
+			!player ||
+			typeof player.x !== 'number' ||
+			typeof player.y !== 'number' ||
+			typeof player.z !== 'number'
+		)
+			return null;
+		return { x: player.x, y: player.y, z: player.z };
+	}
+
 	reconcile(serverState: {
 		x?: number;
 		z?: number;

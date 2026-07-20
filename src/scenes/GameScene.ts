@@ -244,8 +244,14 @@ export class GameScene {
 			this.scene,
 		);
 		const model = result.meshes[0];
-		const startY = this.mapGen.getGroundHeight(0, 0);
-		model.position = new BABYLON.Vector3(0, startY, 0);
+		// Démarrer sur la position de spawn décidée par le serveur (zone
+		// dégagée, jamais dans un mur) ; repli au centre si l'état n'est pas
+		// encore synchronisé, le premier reconcile corrigera alors.
+		const spawn = this.server.getLocalSpawn();
+		const startX = spawn?.x ?? 0;
+		const startZ = spawn?.z ?? 0;
+		const startY = spawn?.y ?? this.mapGen.getGroundHeight(startX, startZ);
+		model.position = new BABYLON.Vector3(startX, startY, startZ);
 		model.scaling = new BABYLON.Vector3(1, 1, 1);
 		model.isVisible = true;
 		this.camera.lockedTarget = model;
@@ -255,9 +261,9 @@ export class GameScene {
 		model.rotationQuaternion = null;
 		this.mapGen.addShadowCaster(model);
 		this.server.setMovementState({
-			x: 0,
+			x: startX,
 			y: startY,
-			z: 0,
+			z: startZ,
 			rotationY: 0,
 			velocityY: 0,
 			isGrounded: true,
