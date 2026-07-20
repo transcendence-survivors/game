@@ -45,9 +45,13 @@ export class MonsterRenderer {
 	}
 
 	update(deltaTime: number) {
-		for (const view of this.views.values()) {
+		for (const [monsterId, view] of this.views) {
 			const { x, z } = view.getPosition();
 			view.update(deltaTime, this.mapGen.getGroundHeight(x, z));
+			// PV lus directement dans l'état autoritatif (les callbacks de
+			// schéma imbriqué ne sont pas fiables pour Life.current).
+			const monster = this.room.state.monsters.get(monsterId);
+			if (monster) view.updateHealth(monster.life.current, monster.life.max);
 		}
 	}
 
@@ -77,6 +81,8 @@ export class MonsterRenderer {
 				this.mapGen.addShadowCaster(mesh),
 			);
 			view.attachNameplate(this.nameplateUi, monster.kind);
+			view.attachHealthBar(this.nameplateUi);
+			view.updateHealth(monster.life.current, monster.life.max);
 			view.setAttacking(monster.animState === 'attack');
 			this.views.set(monsterId, view);
 			const callbacks = COLYSEUS.Callbacks.get(this.room);
