@@ -21,11 +21,27 @@ import {
 import { SettingsMenuRender } from '../settings/SettingsMenuRender';
 //TODO FIX THE @module bug
 
-const FORWARD_KEY = 'w';
-const BACKWARD_KEY = 's';
-const LEFT_KEY = 'a';
-const RIGHT_KEY = 'd';
-const JUMP_KEY = ' ';
+// const FORWARD_KEY = 'w';
+// const BACKWARD_KEY = 's';
+// const LEFT_KEY = 'a';
+// const RIGHT_KEY = 'd';
+// const JUMP_KEY = ' ';
+
+export interface KeyBindings {
+	forward: string;
+	backward: string;
+	left: string;
+	right: string;
+	jump: string;
+}
+
+// export const KeyBindings = {
+// 	forward: 'w',
+// 	backward: 's',
+// 	left: 'a',
+// 	right: 'd',
+// 	jump: ' ',
+// };
 
 export class GameScene {
 	private scene!: Scene;
@@ -37,6 +53,15 @@ export class GameScene {
 	private debugMenu!: DebugMenu;
 	private light!: BABYLON.Light;
 
+	// TO MOVE LATER
+	public keybinds: KeyBindings = {
+		forward: 'w',
+		backward: 's',
+		left: 'a',
+		right: 'd',
+		jump: ' ',
+	};
+
 	private settingsOpened: boolean = false;
 
 	private settings!: SettingsMenuRender;
@@ -45,6 +70,8 @@ export class GameScene {
 
 	private seq = 0;
 	private jumpKeyWasPressed = false;
+
+	private settingsKeyWasPressed = false;
 
 	private server!: ServerOrchestrator;
 	private monsters!: MonsterRenderer;
@@ -60,13 +87,14 @@ export class GameScene {
 		try {
 			this.createScene();
 			this.createCamera();
-			// this.settings = new SettingsMenuRender(
-			// this.engine,
-			// this.scene,
-			// this.camera,
-			// );
-			// this.settings.init();
-			// this.settings.closeSettings();
+			this.settings = new SettingsMenuRender(
+				this.engine,
+				this.scene,
+				this.camera,
+				this.keybinds,
+			);
+			await this.settings.ready;
+			this.settings.closeSettings();
 			this.debugMenu = new DebugMenu(this.engine);
 			this.debugMenu.initGUI();
 			this.server = new ServerOrchestrator(this.scene, room);
@@ -121,13 +149,16 @@ export class GameScene {
 
 		const canvas = this.scene.getEngine().getRenderingCanvas();
 
-		canvas?.addEventListener('click', () => {
-			if (!this.settingsOpened) canvas.requestPointerLock();
+		canvas?.addEventListener('click', async () => {
+			console.log('canvas click, settings open?', this.settings.isOpen());
+			if (this.settings.isOpen()) return;
+			await canvas.requestPointerLock();
 		});
 
 		const sensitivity = 0.0025;
 
 		document.addEventListener('mousemove', (e) => {
+			if (this.settings.isOpen()) return;
 			if (document.pointerLockElement === canvas) {
 				this.camera.alpha -= e.movementX * sensitivity;
 				this.camera.beta -= e.movementY * sensitivity;
@@ -161,15 +192,15 @@ export class GameScene {
 			const cameraYaw = getCameraYaw(
 				this.camera.getDirection(BABYLON.Vector3.Forward()),
 			);
-			const jumpKeyPressed = this.input.isPressed(JUMP_KEY);
+			const jumpKeyPressed = this.input.isPressed(this.keybinds.jump);
 			const jumpTriggered = jumpKeyPressed && !this.jumpKeyWasPressed;
 			this.jumpKeyWasPressed = jumpKeyPressed;
 			const input: MoveInput = {
 				seq: ++this.seq,
-				forward: this.input.isPressed(FORWARD_KEY),
-				backward: this.input.isPressed(BACKWARD_KEY),
-				right: this.input.isPressed(RIGHT_KEY),
-				left: this.input.isPressed(LEFT_KEY),
+				forward: this.input.isPressed(this.keybinds.forward),
+				backward: this.input.isPressed(this.keybinds.backward),
+				right: this.input.isPressed(this.keybinds.right),
+				left: this.input.isPressed(this.keybinds.left),
 				jump: jumpTriggered,
 				deltaTime,
 				cameraYaw,
@@ -226,16 +257,18 @@ export class GameScene {
 			this.hud.update();
 			this.debugMenu.updateDebugMenu(this.player);
 		});
-		// this.scene.onBeforeRenderObservable.add(() => {
-		// 	if (this.input.isPressed('p') && !this.settingsOpened) {
-		// 		this.settings.openSettings();
-		// 		this.settingsOpened = true;
-		// 	}
-		// 	if (this.input.isPressed('p') && this.settingsOpened) {
-		// 		this.settings.closeSettings();
-		// 		this.settingsOpened = false;
-		// 	}
-		// });
+		this.scene.onBeforeRenderObservable.add(() => {
+			const pKeyPressed = this.input.isPressed('p');
+			const pTriggered = pKeyPressed && !this.settingsKeyWasPressed;
+			this.settingsKeyWasPressed = pKeyPressed;
+			if (pTriggered) {
+				document.exitPointerLock();
+				this.settingsOpened = !this.settingsOpened;
+				this.settingsOpened
+					? this.settings.openSettings()
+					: this.settings.closeSettings();
+			}
+		});
 	}
 
 	private async addPlayer() {

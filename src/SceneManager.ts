@@ -1,7 +1,7 @@
 import { type Engine } from '@babylonjs/core';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { GameScene } from './scenes/GameScene';
-import { LobbyScene } from './LobbyScene';
+import { LobbyScene } from './scenes/LobbyScene';
 import * as COLYSEUS from '@colyseus/sdk';
 import type { GameState } from '../../shared-package/src';
 
@@ -62,5 +62,6 @@ export class SceneManager {
 
 	static stop() {
 		this.engine.stopRenderLoop();
+		this.currentScene.dispose();
 	}
 }

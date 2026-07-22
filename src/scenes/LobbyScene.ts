@@ -1,10 +1,10 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import { NetworkManager } from './NetworkManager';
-import { GameScene } from './scenes/GameScene';
-import { SceneManager } from './SceneManager';
-import type { GameState } from '../../shared-package/src';
+import { NetworkManager } from '../NetworkManager';
+import { GameScene } from './GameScene';
+import { SceneManager } from '../SceneManager';
+import type { GameState } from '../../../shared-package/src';
 
 export class LobbyScene {
 	private scene: BABYLON.Scene;
