@@ -1,10 +1,20 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState, Monster } from '../../../shared-package';
+import type {
+	GameState,
+	Monster,
+	MonsterDamageEvent,
+} from '../../../shared-package';
 import { MapGenerator } from '../map/MapGenerator';
 import { MonsterAssetLibrary } from './MonsterAssetLibrary';
 import { MonsterView } from './MonsterView';
+import { DamageNumbers } from './DamageNumbers';
+
+// Décalage vertical (unités monde) pour placer un nombre de dégâts quand la
+// vue du monstre n'existe plus (coup fatal) : on n'a plus sa tête exacte.
+const FATAL_HEAD_OFFSET = 4;
+const FATAL_BOSS_HEAD_OFFSET = 9;
 
 /**
  * Keeps the rendered monsters in sync with the server state: spawns a
@@ -16,6 +26,7 @@ export class MonsterRenderer {
 	private mapGen!: MapGenerator;
 	private assets!: MonsterAssetLibrary;
 	private nameplateUi!: GUI.AdvancedDynamicTexture;
+	private damageNumbers!: DamageNumbers;
 	private views = new Map<string, MonsterView>();
 	private removedWhileLoading = new Set<string>();
 
@@ -32,6 +43,7 @@ export class MonsterRenderer {
 			true,
 			scene,
 		);
+		this.damageNumbers = new DamageNumbers(scene, this.nameplateUi);
 	}
 
 	listen() {
@@ -42,6 +54,11 @@ export class MonsterRenderer {
 		callbacks.onRemove('monsters', (_monster, monsterId) => {
 			this.removeMonster(monsterId);
 		});
+		// Nombres de dégâts pilotés par le serveur (autoritatif, multijoueur).
+		this.room.onMessage(
+			'monsterDamage',
+			(events: MonsterDamageEvent[]) => this.onDamage(events),
+		);
 	}
 
 	update(deltaTime: number) {
@@ -52,6 +69,31 @@ export class MonsterRenderer {
 			// schéma imbriqué ne sont pas fiables pour Life.current).
 			const monster = this.room.state.monsters.get(monsterId);
 			if (monster) view.updateHealth(monster.life.current, monster.life.max);
+		}
+		this.damageNumbers.update(deltaTime);
+	}
+
+	private onDamage(events: MonsterDamageEvent[]) {
+		for (const event of events) {
+			const view = this.views.get(event.id);
+			// Vue vivante -> position exacte de la tête ; sinon (coup fatal,
+			// entité déjà retirée) -> position du monstre transmise par le serveur.
+			const position = view
+				? view.getHeadWorldPosition()
+				: new BABYLON.Vector3(
+						event.x,
+						event.y +
+							(event.isBoss
+								? FATAL_BOSS_HEAD_OFFSET
+								: FATAL_HEAD_OFFSET),
+						event.z,
+					);
+			this.damageNumbers.spawn(
+				position,
+				event.amount,
+				event.isBoss,
+				event.fatal,
+			);
 		}
 	}
 
@@ -109,6 +151,7 @@ export class MonsterRenderer {
 		this.views.forEach((view) => view.dispose());
 		this.views.clear();
 		this.removedWhileLoading.clear();
+		this.damageNumbers.dispose();
 		this.assets.dispose();
 		this.nameplateUi.dispose();
 	}

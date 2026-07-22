@@ -25,6 +25,7 @@ const BAR_PADDING_PX = 2; // marge intérieure entre le contour et le remplissag
 const HEALTH_HEALTHY = '#4ade4a';
 const HEALTH_WOUNDED = '#ffb028';
 const HEALTH_CRITICAL = '#ff4d4d';
+
 // The monster glb models face -Z while the game convention (and the yaw
 // sent by the server) faces +Z, so the visual is turned by half a turn.
 const MODEL_YAW_OFFSET = Math.PI;
@@ -187,6 +188,11 @@ export class MonsterView {
 				: ratio > 0.25
 					? HEALTH_WOUNDED
 					: HEALTH_CRITICAL;
+	}
+
+	/** Position monde du sommet de la tête (pour ancrer les nombres de dégâts). */
+	getHeadWorldPosition(): BABYLON.Vector3 {
+		return this.ensureHeadAnchor().getAbsolutePosition().clone();
 	}
 
 	getPosition(): BABYLON.Vector3 {
