@@ -22,6 +22,7 @@ const FATAL_BOSS_HEAD_OFFSET = 9;
  * disposes it when it dies.
  */
 export class MonsterRenderer {
+	private scene!: BABYLON.Scene;
 	private room!: COLYSEUS.Room<GameState>;
 	private mapGen!: MapGenerator;
 	private assets!: MonsterAssetLibrary;
@@ -35,6 +36,7 @@ export class MonsterRenderer {
 		room: COLYSEUS.Room<GameState>,
 		mapGen: MapGenerator,
 	) {
+		this.scene = scene;
 		this.room = room;
 		this.mapGen = mapGen;
 		this.assets = new MonsterAssetLibrary(scene);
@@ -55,20 +57,26 @@ export class MonsterRenderer {
 			this.removeMonster(monsterId);
 		});
 		// Nombres de dégâts pilotés par le serveur (autoritatif, multijoueur).
-		this.room.onMessage(
-			'monsterDamage',
-			(events: MonsterDamageEvent[]) => this.onDamage(events),
+		this.room.onMessage('monsterDamage', (events: MonsterDamageEvent[]) =>
+			this.onDamage(events),
 		);
 	}
 
 	update(deltaTime: number) {
+		// Position monde de la caméra : sert à masquer un monstre qui l'englobe.
+		const cameraPosition = this.scene.activeCamera?.globalPosition ?? null;
 		for (const [monsterId, view] of this.views) {
 			const { x, z } = view.getPosition();
-			view.update(deltaTime, this.mapGen.getGroundHeight(x, z));
+			view.update(
+				deltaTime,
+				this.mapGen.getGroundHeight(x, z),
+				cameraPosition,
+			);
 			// PV lus directement dans l'état autoritatif (les callbacks de
 			// schéma imbriqué ne sont pas fiables pour Life.current).
 			const monster = this.room.state.monsters.get(monsterId);
-			if (monster) view.updateHealth(monster.life.current, monster.life.max);
+			if (monster)
+				view.updateHealth(monster.life.current, monster.life.max);
 		}
 		this.damageNumbers.update(deltaTime);
 	}

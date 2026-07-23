@@ -30,6 +30,12 @@ const HEALTH_CRITICAL = '#ff4d4d';
 // sent by the server) faces +Z, so the visual is turned by half a turn.
 const MODEL_YAW_OFFSET = Math.PI;
 
+// Marges autour du volume du monstre pour décider que la caméra est « dedans »,
+// puis pour le ré-afficher. L'écart entre les deux est une hystérésis : sans
+// elle, tourner au contact ferait clignoter le modèle.
+const BODY_HIDE_MARGIN = 0.4;
+const BODY_SHOW_MARGIN = 1.6;
+
 /**
  * Visual side of a single monster: owns its mesh instance and animation
  * groups, follows the server position with the same interpolation as
@@ -47,6 +53,13 @@ export class MonsterView {
 	private healthFrame: GUI.Rectangle | null = null;
 	private healthFill: GUI.Rectangle | null = null;
 	private lastHealthRatio = -1;
+	private childMeshes: BABYLON.AbstractMesh[] | null = null;
+	/** Volume englobant approché (cylindre), mesuré une seule fois. */
+	private bodyMeasured = false;
+	private bodyRadiusXZ = 0;
+	private bodyMinY = 0;
+	private bodyMaxY = 0;
+	private bodyHidden = false;
 
 	constructor(
 		root: BABYLON.TransformNode,
@@ -66,8 +79,57 @@ export class MonsterView {
 		this.play('idle');
 	}
 
+	/** Meshes du modèle, mis en cache (`getChildMeshes` alloue à chaque appel). */
 	getMeshes(): BABYLON.AbstractMesh[] {
-		return this.root.getChildMeshes();
+		if (!this.childMeshes) this.childMeshes = this.root.getChildMeshes();
+		return this.childMeshes;
+	}
+
+	/**
+	 * Mesure une fois le volume englobant du modèle, en unités monde et relatif
+	 * au root : un cylindre (rayon horizontal + plage verticale), donc invariant
+	 * par la rotation du monstre autour de Y.
+	 */
+	private measureBody() {
+		if (this.bodyMeasured) return;
+		this.bodyMeasured = true;
+		const bounds = this.root.getHierarchyBoundingVectors();
+		const position = this.root.position;
+		this.bodyRadiusXZ = Math.max(
+			bounds.max.x - position.x,
+			position.x - bounds.min.x,
+			bounds.max.z - position.z,
+			position.z - bounds.min.z,
+		);
+		this.bodyMinY = bounds.min.y - position.y;
+		this.bodyMaxY = bounds.max.y - position.y;
+	}
+
+	/**
+	 * Masque le modèle quand la caméra entre dans son volume. Un boss au contact
+	 * (échelle 2.5) englobe le joueur ET la caméra : l'écran n'affiche plus
+	 * qu'un aplat de ses faces et le jeu devient illisible.
+	 *
+	 * Le fondu progressif serait plus doux, mais `mesh.visibility` est ignoré
+	 * dès que le matériau porte un `transparencyMode` — ce que le loader glTF
+	 * pose systématiquement — et le contourner imposerait de cloner les
+	 * matériaux par monstre, donc de perdre leur partage entre instances.
+	 */
+	private updateCameraOcclusion(cameraPosition: BABYLON.Vector3) {
+		this.measureBody();
+		const position = this.root.position;
+		const distanceXZ = Math.hypot(
+			cameraPosition.x - position.x,
+			cameraPosition.z - position.z,
+		);
+		const margin = this.bodyHidden ? BODY_SHOW_MARGIN : BODY_HIDE_MARGIN;
+		const inside =
+			distanceXZ < this.bodyRadiusXZ + margin &&
+			cameraPosition.y > position.y + this.bodyMinY - margin &&
+			cameraPosition.y < position.y + this.bodyMaxY + margin;
+		if (inside === this.bodyHidden) return;
+		this.bodyHidden = inside;
+		for (const mesh of this.getMeshes()) mesh.isVisible = !inside;
 	}
 
 	snapTo(x: number, z: number, y: number, rotationY: number) {
@@ -91,15 +153,14 @@ export class MonsterView {
 	 */
 	private ensureHeadAnchor(): BABYLON.TransformNode {
 		if (this.nameAnchor) return this.nameAnchor;
-		const bounds = this.root.getHierarchyBoundingVectors();
+		this.measureBody();
 		const scaleY = this.root.scaling.y || 1;
 		this.nameAnchor = new BABYLON.TransformNode(
 			`${this.root.name}_headAnchor`,
 			this.root.getScene(),
 		);
 		this.nameAnchor.parent = this.root;
-		this.nameAnchor.position.y =
-			(bounds.max.y - this.root.position.y) / scaleY;
+		this.nameAnchor.position.y = this.bodyMaxY / scaleY;
 		return this.nameAnchor;
 	}
 
@@ -208,7 +269,11 @@ export class MonsterView {
 		this.currentAnimation = animation;
 	}
 
-	update(deltaTime: number, groundHeight: number) {
+	update(
+		deltaTime: number,
+		groundHeight: number,
+		cameraPosition: BABYLON.Vector3 | null,
+	) {
 		const lerpFactor = Math.min(1, deltaTime * LERP_SPEED);
 		const position = this.root.position;
 		const distance = Math.hypot(
@@ -225,6 +290,7 @@ export class MonsterView {
 		);
 		if (this.attacking) this.play('attack');
 		else this.play(distance > MOVE_EPSILON ? 'walk' : 'idle');
+		if (cameraPosition) this.updateCameraOcclusion(cameraPosition);
 	}
 
 	dispose() {
