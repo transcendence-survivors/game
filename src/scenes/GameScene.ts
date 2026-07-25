@@ -80,7 +80,7 @@ export class GameScene {
 	private player!: BABYLON.AbstractMesh;
 	private mapGen!: MapGenerator;
 	private debugMenu!: DebugMenu;
-	private light!: BABYLON.Light;
+	// private light!: BABYLON.Light;
 
 	// TO MOVE LATER
 	public keybinds: KeyBindings = {
@@ -250,12 +250,12 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		this.light = new BABYLON.HemisphericLight(
-			'Light',
-			new BABYLON.Vector3(0, 40, 0),
-			this.scene,
-		);
-		this.light.intensity = 0.5;
+		// this.light = new BABYLON.HemisphericLight(
+		// 'Light',
+		// new BABYLON.Vector3(0, 40, 0),
+		// this.scene,
+		// );
+		// this.light.intensity = 0.5;
 	}
 
 	private initInput() {
