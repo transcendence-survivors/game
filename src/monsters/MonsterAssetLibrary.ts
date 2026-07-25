@@ -1,5 +1,5 @@
 import * as BABYLON from '@babylonjs/core';
-import { models, type MonsterModel } from '../assets/models';
+import { models, type MonsterGLB } from '../assets/models';
 
 export interface MonsterModel {
 	root: BABYLON.TransformNode;
@@ -14,12 +14,12 @@ export class MonsterAssetLibrary {
 		this.scene = scene;
 	}
 
-	private modelUrl(monster: MonsterModel): string {
+	private modelUrl(monster: MonsterGLB): string {
 		return models.monster[monster];
 	}
 
 	private loadContainer(
-		monster: MonsterModel,
+		monster: MonsterGLB,
 	): Promise<BABYLON.AssetContainer> {
 		const url = this.modelUrl(monster);
 		let container = this.containers.get(url);
@@ -30,7 +30,7 @@ export class MonsterAssetLibrary {
 		return container;
 	}
 
-	async instantiate(monster: MonsterModel): Promise<MonsterModel> {
+	async instantiate(monster: MonsterGLB): Promise<MonsterModel> {
 		const container = await this.loadContainer(monster);
 		const instance = container.instantiateModelsToScene(
 			(name) => `${monster}_${name}`,

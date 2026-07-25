@@ -2,6 +2,7 @@ import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import type { KeyBindings } from '../scenes/GameScene';
+import { guiImports } from '../assets/ui';
 
 export class SettingsMenuRender {
 	private scene: Scene;
@@ -35,7 +36,7 @@ export class SettingsMenuRender {
 			true,
 			this.scene,
 		);
-		await this.advTex.parseFromURLAsync('/ui/settings_menu.json');
+		await this.advTex.parseFromURLAsync(guiImports.settings);
 		this.advTex.rootContainer.isVisible = false;
 		this.linkControls();
 	}

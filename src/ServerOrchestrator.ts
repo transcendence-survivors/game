@@ -11,7 +11,7 @@ import {
 	type MovementState,
 } from '../../shared-package/src';
 
-import { models } from '../assets/models';
+import { models } from './assets/models';
 
 export class ServerOrchestrator {
 	private colyseusSDK!: COLYSEUS.Client;

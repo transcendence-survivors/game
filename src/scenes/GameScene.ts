@@ -117,6 +117,9 @@ export class GameScene {
 		try {
 			this.createScene();
 			this.createCamera();
+
+			this.server = new ServerOrchestrator(this.scene, room);
+			const seedReady = this.server.connect();
 			this.settings = new SettingsMenuRender(
 				this.engine,
 				this.scene,
@@ -127,9 +130,10 @@ export class GameScene {
 			this.settings.closeSettings();
 			this.debugMenu = new DebugMenu(this.engine);
 			this.debugMenu.initGUI();
-			this.server = new ServerOrchestrator(this.scene, room);
-			await this.server.connect();
+
+			await seedReady;
 			this.mapGen = this.server.getMapGen();
+
 			await this.addPlayer();
 			this.server.setPlayer(this.player);
 			this.input = new InputManager(this.scene);

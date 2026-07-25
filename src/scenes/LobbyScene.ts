@@ -5,6 +5,8 @@ import { NetworkManager } from '../NetworkManager';
 import { GameScene } from './GameScene';
 import { SceneManager } from '../SceneManager';
 import type { GameState } from '../../../shared-package/src';
+import lobbyJson from '../assets/ui/lobby_clean.json';
+import { guiImports } from '../assets/ui';
 
 export class LobbyScene {
 	private scene: BABYLON.Scene;
@@ -35,7 +37,7 @@ export class LobbyScene {
 			true,
 			this.scene,
 		);
-		await this.advTex.parseFromURLAsync('/ui/lobby_clean.json');
+		await this.advTex.parseFromURLAsync(guiImports.lobby);
 		this.linkControls();
 	}
 

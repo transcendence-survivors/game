@@ -2,6 +2,7 @@ import type { Engine, Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import { SceneManager } from '../SceneManager';
+import { guiImports } from '../assets/ui';
 
 export class MainMenuScene {
 	private engine: Engine;
@@ -40,7 +41,7 @@ export class MainMenuScene {
 			true,
 			this.scene,
 		);
-		await this.advTex.parseFromURLAsync('/ui/main_menu.json');
+		await this.advTex.parseFromURLAsync(guiImports.main);
 		this.linkControls();
 	}
 
