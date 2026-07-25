@@ -1,29 +1,29 @@
 {
-  "name": "game",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "clean": "rm -rf dist",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "devDependencies": {
-    "@babylonjs/core": "^9.4.1",
-    "@babylonjs/inspector": "^9.4.1",
-    "@types/node": "^25.6.0",
-    "typescript": "~5.9.3",
-    "vite": "^8.0.1",
-    "vitest": "^4.1.5"
-  },
-  "dependencies": {
-    "@babylonjs/gui": "^9.4.1",
-    "@babylonjs/loaders": "^9.4.1",
-    "@colyseus/schema": "^4.0.26",
-    "@colyseus/sdk": "^0.17.43",
-    "@transcendence/game-shared": "file:../shared-package"
-  }
+	"name": "@transcendence/game-ui",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"dependencies": {
+		"@transcendence/game-shared": "workspace:*",
+		"@babylonjs/core": "^9.4.1",
+		"@babylonjs/gui": "^9.4.1",
+		"@babylonjs/loaders": "^9.4.1",
+		"@colyseus/schema": "^4.0.26",
+		"@colyseus/sdk": "^0.17.43"
+	},
+	"devDependencies": {
+		"@babylonjs/inspector": "^9.4.1",
+		"@types/react": "^19",
+		"typescript": "~5.9.3",
+		"vitest": "^4.1.5"
+	}
 }

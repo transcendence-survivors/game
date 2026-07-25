@@ -1,15 +1,11 @@
 import * as BABYLON from '@babylonjs/core';
+import { models, type MonsterModel } from '../assets/models';
 
 export interface MonsterModel {
 	root: BABYLON.TransformNode;
 	animationGroups: BABYLON.AnimationGroup[];
 }
 
-/**
- * Loads monster/boss glb files (mesh + materials + animations) once per
- * kind and hands out independent instances, so ten skitters share one
- * download and one set of materials.
- */
 export class MonsterAssetLibrary {
 	private scene!: BABYLON.Scene;
 	private containers = new Map<string, Promise<BABYLON.AssetContainer>>();
@@ -18,16 +14,14 @@ export class MonsterAssetLibrary {
 		this.scene = scene;
 	}
 
-	private modelUrl(kind: string, isBoss: boolean): string {
-		const folder = isBoss ? 'boss' : 'monster';
-		return `/models/${folder}/${kind}/${kind}.glb`;
+	private modelUrl(monster: MonsterModel): string {
+		return models.monster[monster];
 	}
 
 	private loadContainer(
-		kind: string,
-		isBoss: boolean,
+		monster: MonsterModel,
 	): Promise<BABYLON.AssetContainer> {
-		const url = this.modelUrl(kind, isBoss);
+		const url = this.modelUrl(monster);
 		let container = this.containers.get(url);
 		if (!container) {
 			container = BABYLON.LoadAssetContainerAsync(url, this.scene);
@@ -36,10 +30,10 @@ export class MonsterAssetLibrary {
 		return container;
 	}
 
-	async instantiate(kind: string, isBoss: boolean): Promise<MonsterModel> {
-		const container = await this.loadContainer(kind, isBoss);
+	async instantiate(monster: MonsterModel): Promise<MonsterModel> {
+		const container = await this.loadContainer(monster);
 		const instance = container.instantiateModelsToScene(
-			(name) => `${kind}_${name}`,
+			(name) => `${monster}_${name}`,
 		);
 		instance.animationGroups.forEach((group) => group.stop());
 		return {

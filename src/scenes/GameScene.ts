@@ -19,6 +19,7 @@ import {
 	applyVerticalMovement,
 } from '../../../shared-package';
 import { SettingsMenuRender } from '../settings/SettingsMenuRender';
+import { models } from '../assets/models';
 //TODO FIX THE @module bug
 
 // const FORWARD_KEY = 'w';
@@ -349,10 +350,7 @@ export class GameScene {
 	}
 
 	private async addPlayer() {
-		const result = await BABYLON.ImportMeshAsync(
-			'/models/Player.glb',
-			this.scene,
-		);
+		const result = await BABYLON.ImportMeshAsync(models.player, this.scene);
 		const model = result.meshes[0];
 		// Démarrer sur la position de spawn décidée par le serveur (zone
 		// dégagée, jamais dans un mur) ; repli au centre si l'état n'est pas

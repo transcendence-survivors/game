@@ -11,6 +11,8 @@ import {
 	type MovementState,
 } from '../../shared-package/src';
 
+import { models } from '../assets/models';
+
 export class ServerOrchestrator {
 	private colyseusSDK!: COLYSEUS.Client;
 	private scene!: BABYLON.Scene;
@@ -63,10 +65,7 @@ export class ServerOrchestrator {
 	}
 
 	async addRemotePlayer(sessionId: string) {
-		const result = await BABYLON.ImportMeshAsync(
-			'/models/Player.glb',
-			this.scene,
-		);
+		const result = await BABYLON.ImportMeshAsync(models.player, this.scene);
 		const model = result.meshes[0];
 		model.rotationQuaternion = null;
 		this.remotePlayers.set(sessionId, model);

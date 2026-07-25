@@ -10,6 +10,7 @@ import { MapGenerator } from '../map/MapGenerator';
 import { MonsterAssetLibrary } from './MonsterAssetLibrary';
 import { MonsterView } from './MonsterView';
 import { DamageNumbers } from './DamageNumbers';
+import type { MonsterModel } from '../assets/models';
 
 // Décalage vertical (unités monde) pour placer un nombre de dégâts quand la
 // vue du monstre n'existe plus (coup fatal) : on n'a plus sa tête exacte.
@@ -108,8 +109,7 @@ export class MonsterRenderer {
 	private async addMonster(monster: Monster, monsterId: string) {
 		try {
 			const model = await this.assets.instantiate(
-				monster.kind,
-				monster.isBoss,
+				monster.kind as MonsterModel,
 			);
 			const view = new MonsterView(
 				model.root,
