@@ -1,10 +1,20 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState, Monster } from '../../../shared-package';
+import type {
+	GameState,
+	Monster,
+	MonsterDamageEvent,
+} from '../../../shared-package';
 import { MapGenerator } from '../map/MapGenerator';
 import { MonsterAssetLibrary } from './MonsterAssetLibrary';
 import { MonsterView } from './MonsterView';
+import { DamageNumbers } from './DamageNumbers';
+
+// Décalage vertical (unités monde) pour placer un nombre de dégâts quand la
+// vue du monstre n'existe plus (coup fatal) : on n'a plus sa tête exacte.
+const FATAL_HEAD_OFFSET = 4;
+const FATAL_BOSS_HEAD_OFFSET = 9;
 
 /**
  * Keeps the rendered monsters in sync with the server state: spawns a
@@ -12,10 +22,12 @@ import { MonsterView } from './MonsterView';
  * disposes it when it dies.
  */
 export class MonsterRenderer {
+	private scene!: BABYLON.Scene;
 	private room!: COLYSEUS.Room<GameState>;
 	private mapGen!: MapGenerator;
 	private assets!: MonsterAssetLibrary;
 	private nameplateUi!: GUI.AdvancedDynamicTexture;
+	private damageNumbers!: DamageNumbers;
 	private views = new Map<string, MonsterView>();
 	private removedWhileLoading = new Set<string>();
 
@@ -24,6 +36,7 @@ export class MonsterRenderer {
 		room: COLYSEUS.Room<GameState>,
 		mapGen: MapGenerator,
 	) {
+		this.scene = scene;
 		this.room = room;
 		this.mapGen = mapGen;
 		this.assets = new MonsterAssetLibrary(scene);
@@ -32,6 +45,7 @@ export class MonsterRenderer {
 			true,
 			scene,
 		);
+		this.damageNumbers = new DamageNumbers(scene, this.nameplateUi);
 	}
 
 	listen() {
@@ -42,12 +56,52 @@ export class MonsterRenderer {
 		callbacks.onRemove('monsters', (_monster, monsterId) => {
 			this.removeMonster(monsterId);
 		});
+		// Nombres de dégâts pilotés par le serveur (autoritatif, multijoueur).
+		this.room.onMessage('monsterDamage', (events: MonsterDamageEvent[]) =>
+			this.onDamage(events),
+		);
 	}
 
 	update(deltaTime: number) {
-		for (const view of this.views.values()) {
+		// Position monde de la caméra : sert à masquer un monstre qui l'englobe.
+		const cameraPosition = this.scene.activeCamera?.globalPosition ?? null;
+		for (const [monsterId, view] of this.views) {
 			const { x, z } = view.getPosition();
-			view.update(deltaTime, this.mapGen.getGroundHeight(x, z));
+			view.update(
+				deltaTime,
+				this.mapGen.getGroundHeight(x, z),
+				cameraPosition,
+			);
+			// PV lus directement dans l'état autoritatif (les callbacks de
+			// schéma imbriqué ne sont pas fiables pour Life.current).
+			const monster = this.room.state.monsters.get(monsterId);
+			if (monster)
+				view.updateHealth(monster.life.current, monster.life.max);
+		}
+		this.damageNumbers.update(deltaTime);
+	}
+
+	private onDamage(events: MonsterDamageEvent[]) {
+		for (const event of events) {
+			const view = this.views.get(event.id);
+			// Vue vivante -> position exacte de la tête ; sinon (coup fatal,
+			// entité déjà retirée) -> position du monstre transmise par le serveur.
+			const position = view
+				? view.getHeadWorldPosition()
+				: new BABYLON.Vector3(
+						event.x,
+						event.y +
+							(event.isBoss
+								? FATAL_BOSS_HEAD_OFFSET
+								: FATAL_HEAD_OFFSET),
+						event.z,
+					);
+			this.damageNumbers.spawn(
+				position,
+				event.amount,
+				event.isBoss,
+				event.fatal,
+			);
 		}
 	}
 
@@ -77,6 +131,8 @@ export class MonsterRenderer {
 				this.mapGen.addShadowCaster(mesh),
 			);
 			view.attachNameplate(this.nameplateUi, monster.kind);
+			view.attachHealthBar(this.nameplateUi);
+			view.updateHealth(monster.life.current, monster.life.max);
 			view.setAttacking(monster.animState === 'attack');
 			this.views.set(monsterId, view);
 			const callbacks = COLYSEUS.Callbacks.get(this.room);
@@ -103,6 +159,7 @@ export class MonsterRenderer {
 		this.views.forEach((view) => view.dispose());
 		this.views.clear();
 		this.removedWhileLoading.clear();
+		this.damageNumbers.dispose();
 		this.assets.dispose();
 		this.nameplateUi.dispose();
 	}

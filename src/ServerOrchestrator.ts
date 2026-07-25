@@ -1,6 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
 import { MapGenerator } from './map/MapGenerator';
+import type { AuraInstance } from './map/effects/PlayerAuraPlugin';
 import {
 	applyHorizontalMovement,
 	applyVerticalMovement,
@@ -128,6 +129,60 @@ export class ServerOrchestrator {
 
 	getRoom() {
 		return this.room;
+	}
+
+	/**
+	 * Auras à afficher pour tous les joueurs. Le centre suit le mesh rendu
+	 * (position prédite pour le joueur local, interpolée pour les autres) afin
+	 * que l'aura colle au personnage, tandis que portée et cadence viennent de
+	 * l'état serveur autoritatif.
+	 */
+	collectAuras(): AuraInstance[] {
+		const out: AuraInstance[] = [];
+		const players = this.room.state?.players;
+		if (!players) return out;
+		players.forEach((player, sessionId) => {
+			const aura = player.aura;
+			if (!aura || aura.radius <= 0) return;
+			let x = player.x;
+			let z = player.z;
+			if (sessionId === this.room.sessionId) {
+				if (this.player) {
+					x = this.player.position.x;
+					z = this.player.position.z;
+				}
+			} else {
+				const mesh = this.remotePlayers.get(sessionId);
+				if (mesh) {
+					x = mesh.position.x;
+					z = mesh.position.z;
+				}
+			}
+			out.push({
+				x,
+				z,
+				radius: aura.radius,
+				attackSpeed: aura.attackSpeed,
+			});
+		});
+		return out;
+	}
+
+	/**
+	 * Position de spawn du joueur local telle que décidée par le serveur, si
+	 * l'état est déjà synchronisé. Renvoie null tant qu'elle n'est pas connue
+	 * (le premier reconcile la fournira alors).
+	 */
+	getLocalSpawn(): { x: number; y: number; z: number } | null {
+		const player = this.room.state?.players?.get(this.room.sessionId);
+		if (
+			!player ||
+			typeof player.x !== 'number' ||
+			typeof player.y !== 'number' ||
+			typeof player.z !== 'number'
+		)
+			return null;
+		return { x: player.x, y: player.y, z: player.z };
 	}
 
 	reconcile(serverState: {

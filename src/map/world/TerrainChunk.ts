@@ -170,7 +170,14 @@ export function buildChunkMesh(
 	if (flat) mesh.convertToFlatShadedMesh();
 	mesh.material = mat;
 	mesh.isPickable = false;
-	mesh.doNotSyncBoundingInfo = true;
+	// PAS de `doNotSyncBoundingInfo` ici : la boîte englobante est calculée par
+	// `applyToMesh` en espace LOCAL, donc AVANT la translation du chunk. La
+	// désactiver empêche `_afterComputeWorldMatrix` de la réévaluer et tous les
+	// chunks se retrouvent avec la même boîte, posée sur l'origine du monde —
+	// le frustum culling les fait alors disparaître ensemble dès qu'on ne
+	// regarde plus vers l'origine. Le `freezeWorldMatrix` ci-dessous déclenche
+	// l'unique recalcul nécessaire, puis fige la matrice : les frames suivantes
+	// sortent de `computeWorldMatrix` sans rien resynchroniser.
 	mesh.freezeWorldMatrix();
 	return mesh;
 }
