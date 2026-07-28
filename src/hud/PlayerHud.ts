@@ -7,15 +7,8 @@ const BAR_HEIGHT_PX = 26;
 const HEALTHY_COLOR = '#4caf50';
 const WOUNDED_COLOR = '#ff9800';
 const CRITICAL_COLOR = '#f44336';
-// 10 Hz: repainting the fullscreen GUI texture is costly and health does
-// not need more; same trade-off as the DebugMenu.
 const UPDATE_INTERVAL_MS = 100;
 
-/**
- * On-screen HUD showing the server-authoritative health of the local
- * player. It reads the synced state directly every update instead of
- * relying on nested-schema change callbacks.
- */
 export class PlayerHud {
 	private room!: COLYSEUS.Room<GameState>;
 	private ui!: GUI.AdvancedDynamicTexture;
@@ -30,7 +23,6 @@ export class PlayerHud {
 		this.createBar();
 	}
 
-	/** Call every frame; repaints at most every UPDATE_INTERVAL_MS. */
 	update() {
 		const now = performance.now();
 		if (now - this.lastUpdateMs < UPDATE_INTERVAL_MS) return;
@@ -83,9 +75,6 @@ export class PlayerHud {
 		frame.addControl(this.label);
 	}
 
-	// The client decodes the state through reflection: synced objects carry
-	// the schema fields but none of the shared-class methods, so the ratio
-	// and depletion are computed from raw fields here.
 	private refresh(player: Player) {
 		const { current, max } = player.life;
 		const ratio = max > 0 ? Math.min(1, Math.max(0, current / max)) : 0;

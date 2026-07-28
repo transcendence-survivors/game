@@ -41,6 +41,9 @@ export class MainMenuScene {
 			true,
 			this.scene,
 		);
+		this.advTex.idealWidth = 1920;
+		this.advTex.idealHeight = 1080;
+		this.advTex.renderAtIdealSize = true;
 		await this.advTex.parseFromURLAsync(guiImports.main);
 		this.linkControls();
 	}

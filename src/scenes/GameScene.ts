@@ -7,7 +7,6 @@ import { MapGenerator } from '../map/MapGenerator';
 import { DebugMenu } from '../DebugMenu';
 import { ServerOrchestrator } from '../ServerOrchestrator';
 import { MonsterRenderer } from '../monsters';
-import { PlayerHud } from '../hud/PlayerHud';
 
 import {
 	type MoveInput,
@@ -20,13 +19,8 @@ import {
 } from '../../../shared-package';
 import { SettingsMenuRender } from '../settings/SettingsMenuRender';
 import { models } from '../assets/models';
+import { Hud } from '../hud/Hud';
 //TODO FIX THE @module bug
-
-// const FORWARD_KEY = 'w';
-// const BACKWARD_KEY = 's';
-// const LEFT_KEY = 'a';
-// const RIGHT_KEY = 'd';
-// const JUMP_KEY = ' ';
 
 export interface KeyBindings {
 	forward: string;
@@ -36,41 +30,12 @@ export interface KeyBindings {
 	jump: string;
 }
 
-// export const KeyBindings = {
-// 	forward: 'w',
-// 	backward: 's',
-// 	left: 'a',
-// 	right: 'd',
-// 	jump: ' ',
-// };
-
-// Plans de clipping calés sur l'échelle réelle du jeu. Le near plane par défaut
-// de Babylon (1 unité) tranche tout ce qui passe entre la caméra et le joueur —
-// typiquement un boss au corps-à-corps, mis à l'échelle 2.5 — et comme les
-// modèles sont backface-culled on voit alors l'intérieur du maillage : de
-// grandes facettes qui traversent l'écran. Le far plane par défaut (10000) est
-// lui très au-delà du terrain chargé et ne fait que gaspiller la précision du
-// depth buffer, que le rayon volumétrique relit. La borne retenue couvre le pire
-// cas : demi-diagonale de la grille de chunks (9 x 48 unités, centrée sur le
-// rayon, soit ~305) plus l'écart maximal joueur <-> rayon (~128).
 const CAMERA_NEAR = 0.1;
 const CAMERA_FAR = 600;
-
-// Distance caméra -> joueur souhaitée, et distance minimale quand le relief
-// s'interpose.
 const CAMERA_RADIUS = 10;
 const CAMERA_MIN_RADIUS = 2.5;
-// Marge conservée au-dessus du sol à pleine distance, en dessous de laquelle la
-// caméra passerait sous le terrain. Elle est appliquée AU PRORATA de la distance
-// sondée : le pivot est aux pieds du joueur, donc la ligne de visée y est à ras
-// du sol par construction — une marge constante déclencherait le rapprochement
-// dès la première sonde, même sur un terrain parfaitement plat.
 const CAMERA_GROUND_CLEARANCE = 0.8;
-// Sondes réparties le long du segment joueur -> caméra.
 const CAMERA_PROBES = 8;
-// Vitesse de retour vers la distance nominale une fois l'obstacle passé. Le
-// rapprochement, lui, est immédiat : mieux vaut un recadrage sec qu'une frame
-// avec la caméra dans la falaise.
 const CAMERA_RETURN_SPEED = 6;
 
 export class GameScene {
@@ -81,7 +46,7 @@ export class GameScene {
 	private player!: BABYLON.AbstractMesh;
 	private mapGen!: MapGenerator;
 	private debugMenu!: DebugMenu;
-	// private light!: BABYLON.Light;
+	private light!: BABYLON.Light;
 
 	// TO MOVE LATER
 	public keybinds: KeyBindings = {
@@ -91,8 +56,6 @@ export class GameScene {
 		right: 'd',
 		jump: ' ',
 	};
-
-	private settingsOpened: boolean = false;
 
 	private settings!: SettingsMenuRender;
 
@@ -105,7 +68,8 @@ export class GameScene {
 
 	private server!: ServerOrchestrator;
 	private monsters!: MonsterRenderer;
-	private hud!: PlayerHud;
+	// private hud!: PlayerHud;
+	private hud!: Hud;
 	public readonly ready: Promise<void>;
 
 	constructor(engine: Engine, room: COLYSEUS.Room<GameState>) {
@@ -127,7 +91,7 @@ export class GameScene {
 				this.keybinds,
 			);
 			await this.settings.ready;
-			this.settings.closeSettings();
+			this.settings.close();
 			this.debugMenu = new DebugMenu(this.engine);
 			this.debugMenu.initGUI();
 
@@ -137,11 +101,12 @@ export class GameScene {
 			await this.addPlayer();
 			this.server.setPlayer(this.player);
 			this.input = new InputManager(this.scene);
-			this.initInput();
+			this.renderLoop();
 			this.server.listenToState();
 			this.monsters = new MonsterRenderer(this.scene, room, this.mapGen);
 			this.monsters.listen();
-			this.hud = new PlayerHud(room);
+			this.hud = new Hud(this.engine, this.scene, room);
+			await this.hud.ready;
 		} catch (e) {
 			console.error('init failed', e);
 		}
@@ -152,6 +117,9 @@ export class GameScene {
 	}
 
 	dispose() {
+		const canvas = this.engine.getRenderingCanvas();
+		canvas?.removeEventListener('pointerdown', this.boundOnClick);
+		document.removeEventListener('mousemove', this.boundOnMouseMove);
 		this.hud?.dispose();
 		this.monsters?.dispose();
 		this.scene.dispose();
@@ -174,8 +142,6 @@ export class GameScene {
 		this.camera.inputs.clear();
 		this.camera.lowerBetaLimit = 0.2;
 		this.camera.upperBetaLimit = 1.4;
-		// La borne basse doit laisser passer le rapprochement anti-terrain :
-		// `_checkLimits` remonterait sinon le rayon calculé par frame.
 		this.camera.lowerRadiusLimit = CAMERA_MIN_RADIUS;
 		this.camera.upperRadiusLimit = CAMERA_RADIUS;
 		this.camera.inertia = 0.85;
@@ -185,45 +151,13 @@ export class GameScene {
 		this.camera.fov = 1.5;
 
 		const canvas = this.scene.getEngine().getRenderingCanvas();
-
-		canvas?.addEventListener('click', async () => {
-			console.log('canvas click, settings open?', this.settings.isOpen());
-			if (this.settings.isOpen()) return;
-			await canvas.requestPointerLock();
-		});
-
-		const sensitivity = 0.0025;
-
-		document.addEventListener('mousemove', (e) => {
-			if (this.settings.isOpen()) return;
-			if (document.pointerLockElement === canvas) {
-				this.camera.alpha -= e.movementX * sensitivity;
-				this.camera.beta -= e.movementY * sensitivity;
-				this.camera.beta = Math.max(
-					this.camera.lowerBetaLimit as number,
-					Math.min(
-						this.camera.upperBetaLimit as number,
-						this.camera.beta,
-					),
-				);
-			}
-		});
+		canvas?.addEventListener('pointerdown', this.boundOnClick);
+		document.addEventListener('mousemove', this.boundOnMouseMove);
 	}
 
-	/**
-	 * Rapproche la caméra du joueur tant que le relief s'interpose. Aucun mesh
-	 * de la scène ne porte de collision (les chunks sont même non pickables),
-	 * donc rien n'empêchait la caméra d'entrer dans une falaise — on voyait
-	 * alors à travers le terrain, ses triangles tranchés par le near plane.
-	 *
-	 * La hauteur du sol étant analytique (`World.height`), quelques sondes le
-	 * long du segment joueur -> caméra suffisent : pas de raycast sur les meshes.
-	 */
 	private clampCameraToTerrain(deltaTime: number) {
 		const target = this.camera.target;
 		const sinBeta = Math.sin(this.camera.beta);
-		// Décomposition de la position d'une ArcRotateCamera :
-		// position = target + radius * (cosA*sinB, cosB, sinA*sinB).
 		const dirX = Math.cos(this.camera.alpha) * sinBeta;
 		const dirY = Math.cos(this.camera.beta);
 		const dirZ = Math.sin(this.camera.alpha) * sinBeta;
@@ -237,7 +171,6 @@ export class GameScene {
 			);
 			const clearance = (CAMERA_GROUND_CLEARANCE * probe) / CAMERA_RADIUS;
 			if (target.y + dirY * probe < ground + clearance) {
-				// On garde la dernière sonde dégagée.
 				radius = (CAMERA_RADIUS * (i - 1)) / CAMERA_PROBES;
 				break;
 			}
@@ -255,15 +188,15 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		// this.light = new BABYLON.HemisphericLight(
-		// 'Light',
-		// new BABYLON.Vector3(0, 40, 0),
-		// this.scene,
-		// );
-		// this.light.intensity = 0.5;
+		this.light = new BABYLON.HemisphericLight(
+			'Light',
+			new BABYLON.Vector3(0, 40, 0),
+			this.scene,
+		);
+		this.light.intensity = 0.5;
 	}
 
-	private initInput() {
+	private renderLoop() {
 		let lastTime = performance.now();
 		this.scene.onBeforeRenderObservable.add(() => {
 			const now = performance.now();
@@ -339,16 +272,20 @@ export class GameScene {
 			this.hud.update();
 			this.debugMenu.updateDebugMenu(this.player);
 		});
-		this.scene.onBeforeRenderObservable.add(() => {
+		this.scene.onBeforeRenderObservable.add(async () => {
 			const pKeyPressed = this.input.isPressed('p');
 			const pTriggered = pKeyPressed && !this.settingsKeyWasPressed;
 			this.settingsKeyWasPressed = pKeyPressed;
 			if (pTriggered) {
-				document.exitPointerLock();
-				this.settingsOpened = !this.settingsOpened;
-				this.settingsOpened
-					? this.settings.openSettings()
-					: this.settings.closeSettings();
+				if (!this.settings.isOpen()) {
+					this.settings.open();
+					document.exitPointerLock();
+				} else {
+					this.settings.close();
+					await this.engine
+						.getRenderingCanvas()
+						?.requestPointerLock();
+				}
 			}
 		});
 	}
@@ -356,9 +293,6 @@ export class GameScene {
 	private async addPlayer() {
 		const result = await BABYLON.ImportMeshAsync(models.player, this.scene);
 		const model = result.meshes[0];
-		// Démarrer sur la position de spawn décidée par le serveur (zone
-		// dégagée, jamais dans un mur) ; repli au centre si l'état n'est pas
-		// encore synchronisé, le premier reconcile corrigera alors.
 		const spawn = this.server.getLocalSpawn();
 		const startX = spawn?.x ?? 0;
 		const startZ = spawn?.z ?? 0;
@@ -381,4 +315,29 @@ export class GameScene {
 			isGrounded: true,
 		});
 	}
+
+	private boundOnClick = async () => {
+		console.log('click handler fired', Math.random());
+		if (this.settings.isOpen()) return;
+		await this.engine.getRenderingCanvas()?.requestPointerLock();
+	};
+
+	private boundOnMouseMove = (e: MouseEvent) => {
+		if (this.settings.isOpen()) return;
+		const canvas = this.engine.getRenderingCanvas();
+
+		const sensitivity = 0.0025;
+
+		if (document.pointerLockElement === canvas) {
+			this.camera.alpha -= e.movementX * sensitivity;
+			this.camera.beta -= e.movementY * sensitivity;
+			this.camera.beta = Math.max(
+				this.camera.lowerBetaLimit as number,
+				Math.min(
+					this.camera.upperBetaLimit as number,
+					this.camera.beta,
+				),
+			);
+		}
+	};
 }

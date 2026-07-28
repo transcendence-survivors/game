@@ -5,13 +5,9 @@ interface DebugStats {
 	position: GUI.TextBlock;
 	rotation: GUI.TextBlock;
 	fps: GUI.TextBlock;
-	// health: GUI.TextBlock;
 }
 
 export class DebugMenu {
-	// 10 Hz : largement lisible pour du texte de debug, alors qu'un `.text =`
-	// sur un AdvancedDynamicTexture fullscreen redessine et ré-upload TOUTE
-	// la texture GUI, pas juste la zone modifiée — coûteux à 60 Hz pour rien.
 	private static readonly UPDATE_INTERVAL_MS = 100;
 	private debugStats!: DebugStats;
 	private engine!: BABYLON.Engine;
@@ -87,7 +83,6 @@ export class DebugMenu {
 			position: addStatLine('Position:'),
 			rotation: addStatLine('Rotation:'),
 			fps: addStatLine('FPS:'),
-			// health: addStatLine('Health:'),
 		};
 	}
 

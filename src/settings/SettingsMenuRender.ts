@@ -38,12 +38,12 @@ export class SettingsMenuRender {
 		);
 		await this.advTex.parseFromURLAsync(guiImports.settings);
 		this.advTex.rootContainer.isVisible = false;
+		this.updatePointerEvents();
 		this.linkControls();
 	}
 
 	dispose() {
-		// REMOVE EVENT LISTENER FOR KEYDOWN
-		// document.removeEventListener('keydown', e);
+		document.removeEventListener('keydown', this.boundKeyDown);
 		this.advTex.dispose();
 		this.scene.dispose();
 	}
@@ -52,12 +52,19 @@ export class SettingsMenuRender {
 		return this.advTex.rootContainer.isVisible;
 	}
 
-	openSettings() {
+	open() {
 		this.advTex.rootContainer.isVisible = true;
+		this.updatePointerEvents();
 	}
 
-	closeSettings() {
+	close() {
 		this.advTex.rootContainer.isVisible = false;
+		this.updatePointerEvents();
+	}
+
+	private updatePointerEvents() {
+		const layer = this.advTex.getContext().canvas as HTMLCanvasElement;
+		layer.style.pointerEvents = this.isOpen() ? 'auto' : 'none';
 	}
 
 	private linkControls() {
@@ -75,10 +82,10 @@ export class SettingsMenuRender {
 			this.camera.fov = BABYLON.Tools.ToRadians(rounded);
 		});
 
-		// const buttonBack = this.advTex.getControlByName(
-		// 	'ButtonBack',
-		// ) as GUI.Button;
-		// buttonBack?.onPointerUpObservable.add(() => this.closeSettings());
+		const buttonBack = this.advTex.getControlByName(
+			'ButtonBack',
+		) as GUI.Button;
+		buttonBack?.onPointerUpObservable.add(() => this.close());
 
 		const buttonReset = this.advTex.getControlByName(
 			'ButtonReset',
@@ -103,9 +110,7 @@ export class SettingsMenuRender {
 				this.beginRebind(action, button),
 			);
 		}
-		document.addEventListener('keydown', (e) =>
-			this.handleRebindKeyDown(e),
-		);
+		document.addEventListener('keydown', this.boundKeyDown);
 	}
 
 	private beginRebind(action: keyof KeyBindings, button: GUI.Button) {
@@ -184,4 +189,6 @@ export class SettingsMenuRender {
 			}
 		}, 700);
 	}
+
+	private boundKeyDown = (e: KeyboardEvent) => this.handleRebindKeyDown(e);
 }

@@ -2,10 +2,8 @@ import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
 import { NetworkManager } from '../NetworkManager';
-import { GameScene } from './GameScene';
 import { SceneManager } from '../SceneManager';
 import type { GameState } from '../../../shared-package/src';
-import lobbyJson from '../assets/ui/lobby_clean.json';
 import { guiImports } from '../assets/ui';
 
 export class LobbyScene {
@@ -37,6 +35,9 @@ export class LobbyScene {
 			true,
 			this.scene,
 		);
+		this.advTex.idealWidth = 1920;
+		this.advTex.idealHeight = 1080;
+		this.advTex.renderAtIdealSize = true;
 		await this.advTex.parseFromURLAsync(guiImports.lobby);
 		this.linkControls();
 	}
@@ -102,11 +103,8 @@ export class LobbyScene {
 				this.room = await this.network.createRoom(roomName);
 				setStatus(`Room "${roomName}" created`);
 				setBusy(false);
-				SceneManager.toGame(this.room);
 				if (this.room) {
-					const gamescene = new GameScene(this.engine, this.room);
-					this.scene.dispose();
-					gamescene.render();
+					await SceneManager.toGame(this.room);
 				}
 			} catch (error) {
 				console.log(error);
@@ -123,11 +121,8 @@ export class LobbyScene {
 				this.room = await this.network.joinRoomByName(roomName);
 				setStatus(`Joined "${roomName}"`);
 				setBusy(false);
-				SceneManager.toGame(this.room);
 				if (this.room) {
-					const gamescene = new GameScene(this.engine, this.room);
-					this.scene.dispose();
-					gamescene.render();
+					await SceneManager.toGame(this.room);
 				}
 			} catch (error) {
 				console.log(error);
