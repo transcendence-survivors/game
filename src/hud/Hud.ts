@@ -74,5 +74,6 @@ export class Hud {
 				? Math.min(1, Math.max(0, xp / xpToNextLevel))
 				: 0;
 		xpBar.width = `${Math.round(xpRatio * 100)}%`;
+		killText.text = `Kills: ${player.stats.killAmount}`;
 	}
 }
