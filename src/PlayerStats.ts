@@ -16,7 +16,7 @@ export class PlayerStats {
 	private luck!: number;
 	private statsInventory: StatUpgrade[] = [];
 	private killAmount!: number;
-	private xp!: number;
+	private level!: number;
 
 	getHealth() {
 		return this.health;
@@ -27,11 +27,11 @@ export class PlayerStats {
 	}
 
 	getXp() {
-		return this.xp;
+		return this.level;
 	}
 
-	setXp(xp: number) {
-		this.xp = xp;
+	setXp(level: number) {
+		this.level = level;
 	}
 
 	getAttackSpeed() {

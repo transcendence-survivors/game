@@ -3,4 +3,5 @@ export const guiImports = {
 	main: new URL('./main_menu.json', import.meta.url).href,
 	settings: new URL('./settings_menu.json', import.meta.url).href,
 	hud: new URL('./hud.json', import.meta.url).href,
+	levelup: new URL('./levelup_ui.json', import.meta.url).href,
 } as const;

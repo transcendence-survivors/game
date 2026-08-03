@@ -130,12 +130,6 @@ export class ServerOrchestrator {
 		return this.room;
 	}
 
-	/**
-	 * Auras à afficher pour tous les joueurs. Le centre suit le mesh rendu
-	 * (position prédite pour le joueur local, interpolée pour les autres) afin
-	 * que l'aura colle au personnage, tandis que portée et cadence viennent de
-	 * l'état serveur autoritatif.
-	 */
 	collectAuras(): AuraInstance[] {
 		const out: AuraInstance[] = [];
 		const players = this.room.state?.players;
@@ -220,10 +214,13 @@ export class ServerOrchestrator {
 		const world = this.mapGen.getWorld();
 
 		for (const input of this.pendingInputs) {
+			const player = this.room.state.players.get(this.room.sessionId);
+			if (!player) return;
 			const horizontalMove = applyHorizontalMovement(
 				state,
 				input,
 				input.cameraYaw,
+				player.stats.moveSpeed,
 			);
 			const resolved = resolveTerrainCollision(
 				world,

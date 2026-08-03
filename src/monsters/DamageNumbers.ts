@@ -16,13 +16,6 @@ interface Floater {
 	elapsed: number;
 }
 
-/**
- * Nombres de dégâts flottants, pilotés par les événements serveur
- * (`monsterDamage`). Chaque nombre est ancré à un point du monde — la position
- * du monstre au moment du coup — puis monte et s'estompe. Étant indépendant du
- * cycle de vie du monstre, le coup fatal s'affiche même si l'entité a déjà été
- * retirée de l'état.
- */
 export class DamageNumbers {
 	private scene: BABYLON.Scene;
 	private ui: GUI.AdvancedDynamicTexture;

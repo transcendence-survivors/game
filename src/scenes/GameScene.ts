@@ -20,6 +20,7 @@ import {
 import { SettingsMenuRender } from '../settings/SettingsMenuRender';
 import { models } from '../assets/models';
 import { Hud } from '../hud/Hud';
+import { LevelUpMenu } from '../LevelUpMenu';
 //TODO FIX THE @module bug
 
 export interface KeyBindings {
@@ -70,6 +71,7 @@ export class GameScene {
 	private monsters!: MonsterRenderer;
 	// private hud!: PlayerHud;
 	private hud!: Hud;
+	private levelUpMenu!: LevelUpMenu;
 	public readonly ready: Promise<void>;
 
 	constructor(engine: Engine, room: COLYSEUS.Room<GameState>) {
@@ -93,20 +95,24 @@ export class GameScene {
 			await this.settings.ready;
 			this.settings.close();
 			this.debugMenu = new DebugMenu(this.engine);
-			this.debugMenu.initGUI();
 
 			await seedReady;
 			this.mapGen = this.server.getMapGen();
 
 			await this.addPlayer();
+
 			this.server.setPlayer(this.player);
 			this.input = new InputManager(this.scene);
 			this.renderLoop();
 			this.server.listenToState();
 			this.monsters = new MonsterRenderer(this.scene, room, this.mapGen);
 			this.monsters.listen();
+
 			this.hud = new Hud(this.engine, this.scene, room);
 			await this.hud.ready;
+
+			this.levelUpMenu = new LevelUpMenu(this.scene, room);
+			await this.levelUpMenu.ready;
 		} catch (e) {
 			console.error('init failed', e);
 		}
@@ -124,6 +130,7 @@ export class GameScene {
 		this.monsters?.dispose();
 		this.scene.dispose();
 		this.mapGen.dispose();
+		this.levelUpMenu.dispose();
 	}
 
 	getScene() {
@@ -223,10 +230,14 @@ export class GameScene {
 			moving ? this.walkAnim.play() : this.walkAnim.stop();
 			const currentState = this.server.getMovementState();
 			const world = this.mapGen.getWorld();
+			const room = this.server.getRoom();
+			const playerInRoom = room.state.players.get(room.sessionId);
+			if (!playerInRoom) return;
 			const horizontalMove = applyHorizontalMovement(
 				currentState,
 				input,
 				input.cameraYaw,
+				playerInRoom.stats.moveSpeed,
 			);
 			const resolved = resolveTerrainCollision(
 				world,
@@ -317,7 +328,6 @@ export class GameScene {
 	}
 
 	private boundOnClick = async () => {
-		console.log('click handler fired', Math.random());
 		if (this.settings.isOpen()) return;
 		await this.engine.getRenderingCanvas()?.requestPointerLock();
 	};

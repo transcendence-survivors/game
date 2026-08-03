@@ -26,10 +26,6 @@ export class SettingsMenuRender {
 		this.ready = this.init();
 	}
 
-	async render() {
-		this.scene.render();
-	}
-
 	async init() {
 		this.advTex = GUI.AdvancedDynamicTexture.CreateFullscreenUI(
 			'SettingsUi',
@@ -37,6 +33,9 @@ export class SettingsMenuRender {
 			this.scene,
 		);
 		await this.advTex.parseFromURLAsync(guiImports.settings);
+		this.advTex.idealWidth = 1920;
+		this.advTex.idealHeight = 1080;
+		this.advTex.renderAtIdealSize = true;
 		this.advTex.rootContainer.isVisible = false;
 		this.updatePointerEvents();
 		this.linkControls();
