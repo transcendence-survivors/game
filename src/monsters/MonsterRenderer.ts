@@ -12,16 +12,9 @@ import { MonsterView } from './MonsterView';
 import { DamageNumbers } from './DamageNumbers';
 import type { MonsterModel } from '../assets/models';
 
-// Décalage vertical (unités monde) pour placer un nombre de dégâts quand la
-// vue du monstre n'existe plus (coup fatal) : on n'a plus sa tête exacte.
 const FATAL_HEAD_OFFSET = 4;
 const FATAL_BOSS_HEAD_OFFSET = 9;
 
-/**
- * Keeps the rendered monsters in sync with the server state: spawns a
- * MonsterView when a monster enters the state, follows its changes and
- * disposes it when it dies.
- */
 export class MonsterRenderer {
 	private scene!: BABYLON.Scene;
 	private room!: COLYSEUS.Room<GameState>;
@@ -57,14 +50,12 @@ export class MonsterRenderer {
 		callbacks.onRemove('monsters', (_monster, monsterId) => {
 			this.removeMonster(monsterId);
 		});
-		// Nombres de dégâts pilotés par le serveur (autoritatif, multijoueur).
 		this.room.onMessage('monsterDamage', (events: MonsterDamageEvent[]) =>
 			this.onDamage(events),
 		);
 	}
 
 	update(deltaTime: number) {
-		// Position monde de la caméra : sert à masquer un monstre qui l'englobe.
 		const cameraPosition = this.scene.activeCamera?.globalPosition ?? null;
 		for (const [monsterId, view] of this.views) {
 			const { x, z } = view.getPosition();
@@ -73,8 +64,6 @@ export class MonsterRenderer {
 				this.mapGen.getGroundHeight(x, z),
 				cameraPosition,
 			);
-			// PV lus directement dans l'état autoritatif (les callbacks de
-			// schéma imbriqué ne sont pas fiables pour Life.current).
 			const monster = this.room.state.monsters.get(monsterId);
 			if (monster)
 				view.updateHealth(monster.life.current, monster.life.max);
@@ -85,8 +74,6 @@ export class MonsterRenderer {
 	private onDamage(events: MonsterDamageEvent[]) {
 		for (const event of events) {
 			const view = this.views.get(event.id);
-			// Vue vivante -> position exacte de la tête ; sinon (coup fatal,
-			// entité déjà retirée) -> position du monstre transmise par le serveur.
 			const position = view
 				? view.getHeadWorldPosition()
 				: new BABYLON.Vector3(
@@ -116,7 +103,6 @@ export class MonsterRenderer {
 				model.animationGroups,
 				monster.isBoss,
 			);
-			// The monster may have died while its model was downloading.
 			if (this.removedWhileLoading.delete(monsterId)) {
 				view.dispose();
 				return;

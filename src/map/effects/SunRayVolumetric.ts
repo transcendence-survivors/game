@@ -1,20 +1,3 @@
-/**
- * @file The sun ray as a TRUE volumetric light shaft — a fullscreen post-process
- * that raymarches a vertical cylinder of glowing, dusty air at the zone centre,
- * instead of a cylinder MESH (which broke the moment the camera entered its
- * hollow shell). Being a post-process, it:
- *   - looks identical from inside and outside the beam (per-pixel volume march),
- *   - reads the scene's OWN depth buffer (it runs after the main pass, which
- *     INCLUDES the terrain) so the shaft is correctly OCCLUDED by hills and
- *     lands softly on the ground,
- *   - turns the 3D dust noise into an integrated volumetric density.
- *
- * It is additive: its glow is added on top of the rendered scene. Depth is read
- * by swapping a sampleable depth texture into the scene's render target. Stays
- * WebGL2: the shader is GLSL ES 1.00 (texture2D / gl_FragColor) and the depth is
- * a DEPTH24_STENCIL8 texture, both core WebGL2 features.
- */
-
 import {
 	Color4,
 	Constants,
@@ -35,15 +18,10 @@ import type {
 import { Vector3 as Vec3 } from '@babylonjs/core';
 
 export interface SunRayOptions {
-	/** Beam colour (warm white). */
 	readonly color: Color3;
-	/** World Y of the strike point (≈ ground at the centre) — the shaft's base. */
 	readonly strikeY: number;
-	/** Horizontal radius of the shaft (world units). */
 	readonly radius: number;
-	/** Visible height of the shaft above the strike (it dissolves toward the top). */
 	readonly height: number;
-	/** Overall glow strength. */
 	readonly intensity: number;
 }
 
@@ -136,9 +114,13 @@ void main(void){
 }
 `;
 
-/** A soft round radial sprite (white core → transparent) for the dust motes. */
 function radialSprite(scene: Scene, name: string): DynamicTexture {
-	const tex = new DynamicTexture(name, { width: 128, height: 128 }, scene, false);
+	const tex = new DynamicTexture(
+		name,
+		{ width: 128, height: 128 },
+		scene,
+		false,
+	);
 	tex.hasAlpha = true;
 	const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
 	const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -154,9 +136,7 @@ function radialSprite(scene: Scene, name: string): DynamicTexture {
 export class SunRayVolumetric {
 	private readonly scene: Scene;
 	private readonly post: PostProcess;
-	/** Floating illuminated dust drifting up inside the shaft (gives it volume). */
 	private readonly dust: ParticleSystem | GPUParticleSystem;
-	/** Shaft base centre in world space (xz follow the zone; y = strikeY). */
 	private readonly center: Vector3;
 	private readonly color: Color3;
 	private readonly radius: number;
@@ -178,10 +158,16 @@ export class SunRayVolumetric {
 		this.post = new PostProcess(
 			'sunRayVol',
 			'sunRayVol',
-			['uTanFov', 'uPlanes', 'uInvView', 'uCamPos', 'uBeamCenter', 'uBeamShape', 'uColor'],
+			[
+				'uTanFov',
+				'uPlanes',
+				'uInvView',
+				'uCamPos',
+				'uBeamCenter',
+				'uBeamShape',
+				'uColor',
+			],
 			['depthSampler'],
-			// Pleine résolution : faisceau net (le sous-échantillonnage 0.5 rendait
-			// les bords du shaft flous/pixelisés une fois réétirés).
 			1.0,
 			scene.activeCamera,
 		);
@@ -197,25 +183,40 @@ export class SunRayVolumetric {
 			const engine = this.scene.getEngine();
 			const tan = Math.tan(cam.fov / 2);
 			effect.setFloat2('uTanFov', tan * engine.getAspectRatio(cam), tan);
-			effect.setFloat3('uPlanes', cam.minZ, cam.maxZ, engine.isNDCHalfZRange ? 1 : 0);
+			effect.setFloat3(
+				'uPlanes',
+				cam.minZ,
+				cam.maxZ,
+				engine.isNDCHalfZRange ? 1 : 0,
+			);
 			effect.setMatrix('uInvView', cam.getWorldMatrix()); // world matrix = inverse view
 			const p = cam.globalPosition;
 			effect.setFloat3('uCamPos', p.x, p.y, p.z);
-			effect.setFloat3('uBeamCenter', this.center.x, this.center.y, this.center.z);
+			effect.setFloat3(
+				'uBeamCenter',
+				this.center.x,
+				this.center.y,
+				this.center.z,
+			);
 			const time = (performance.now() - this.startMs) / 1000;
-			effect.setFloat4('uBeamShape', this.radius, this.height, this.intensity, time);
+			effect.setFloat4(
+				'uBeamShape',
+				this.radius,
+				this.height,
+				this.intensity,
+				time,
+			);
 			effect.setColor3('uColor', this.color);
 		});
 
-		// Warm motes drifting slowly UP inside the shaft, additive so they only add
-		// glow — gives the beam real volume and life. The emitter IS `center`, so
-		// the dust column follows the strike point (see setStrike).
-		// GPU-simulated when available: offloads per-particle update off the main
-		// thread entirely, which a plain ParticleSystem does not.
 		const r = this.radius;
 		const DUST_CAPACITY = 300;
 		this.dust = GPUParticleSystem.IsSupported
-			? new GPUParticleSystem('sun-ray-dust', { capacity: DUST_CAPACITY }, scene)
+			? new GPUParticleSystem(
+					'sun-ray-dust',
+					{ capacity: DUST_CAPACITY },
+					scene,
+				)
 			: new ParticleSystem('sun-ray-dust', DUST_CAPACITY, scene);
 		this.dust.particleTexture = radialSprite(scene, 'sun-ray-dust-tex');
 		this.dust.emitter = this.center;
@@ -230,7 +231,7 @@ export class SunRayVolumetric {
 		this.dust.maxLifeTime = 9.0;
 		this.dust.emitRate = 70;
 		this.dust.blendMode = ParticleSystem.BLENDMODE_ADD;
-		this.dust.gravity = new Vec3(0, 0.6, 0); // gentle upward drift
+		this.dust.gravity = new Vec3(0, 0.6, 0);
 		this.dust.direction1 = new Vec3(-0.15, 0.6, -0.15);
 		this.dust.direction2 = new Vec3(0.15, 1.0, 0.15);
 		this.dust.minEmitPower = 0.2;
@@ -239,14 +240,19 @@ export class SunRayVolumetric {
 		this.dust.start();
 	}
 
-	/** Move the shaft's base to a new strike point (x, ground y, z). */
+	getbeamCenter(): Vector3 {
+		return this.center;
+	}
+	getbeamRadius(): number {
+		return this.radius;
+	}
+
 	setStrike(x: number, y: number, z: number): void {
 		this.center.x = x;
 		this.center.y = y;
 		this.center.z = z;
 	}
 
-	/** The scene's own depth buffer as a sampleable texture. */
 	private sceneDepthTexture(cam: Camera): InternalTexture | null {
 		const first = (
 			cam as unknown as { _getFirstPostProcess(): PostProcess | null }

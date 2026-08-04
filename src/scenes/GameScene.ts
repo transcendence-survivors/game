@@ -126,8 +126,9 @@ export class GameScene {
 		const canvas = this.engine.getRenderingCanvas();
 		canvas?.removeEventListener('pointerdown', this.boundOnClick);
 		document.removeEventListener('mousemove', this.boundOnMouseMove);
-		this.hud?.dispose();
-		this.monsters?.dispose();
+		this.server.getRoom().leave();
+		this.hud.dispose();
+		this.monsters.dispose();
 		this.scene.dispose();
 		this.mapGen.dispose();
 		this.levelUpMenu.dispose();

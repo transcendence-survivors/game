@@ -12,6 +12,7 @@ import {
 } from '../../shared-package/src';
 
 import { models } from './assets/models';
+import { SceneManager } from './SceneManager';
 
 export class ServerOrchestrator {
 	private colyseusSDK!: COLYSEUS.Client;
@@ -117,6 +118,10 @@ export class ServerOrchestrator {
 					},
 				);
 			});
+			this.room.onMessage('gameOver', (player) => {
+				document.exitPointerLock();
+				SceneManager.toLobby();
+			});
 		} catch (error) {
 			console.log(error);
 		}
@@ -161,11 +166,6 @@ export class ServerOrchestrator {
 		return out;
 	}
 
-	/**
-	 * Position de spawn du joueur local telle que décidée par le serveur, si
-	 * l'état est déjà synchronisé. Renvoie null tant qu'elle n'est pas connue
-	 * (le premier reconcile la fournira alors).
-	 */
 	getLocalSpawn(): { x: number; y: number; z: number } | null {
 		const player = this.room.state?.players?.get(this.room.sessionId);
 		if (

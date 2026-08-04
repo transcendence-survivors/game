@@ -1,7 +1,7 @@
 import * as GUI from '@babylonjs/gui';
 import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState, Player } from '../../../shared-package';
+import type { GameState } from '../../../shared-package';
 import { guiImports } from '../assets/ui';
 
 export class Hud {
@@ -64,16 +64,18 @@ export class Hud {
 		const player = this.room.state.players.get(this.room.sessionId);
 		if (!player) return;
 		const { current, max } = player.life;
+		const MAX_FILL_PERCENT = 98;
 		const hpRatio = max > 0 ? Math.min(1, Math.max(0, current / max)) : 0;
-		hpBar.width = `${Math.round(hpRatio * 100)}%`;
+		hpBar.width = `${(hpRatio * MAX_FILL_PERCENT).toFixed(2)}%`;
 		hpText.text = `${Math.round(current)} / ${Math.round(max)}`;
 
+		const MAX_XP_FILL_PERCENT = 98;
 		const { xp, xpToNextLevel } = player.experience;
 		const xpRatio =
 			xpToNextLevel > 0
 				? Math.min(1, Math.max(0, xp / xpToNextLevel))
 				: 0;
-		xpBar.width = `${Math.round(xpRatio * 100)}%`;
+		xpBar.width = `${(xpRatio * MAX_XP_FILL_PERCENT).toFixed(2)}%`;
 		killText.text = `Kills: ${player.stats.killAmount}`;
 	}
 }

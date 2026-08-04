@@ -1,9 +1,9 @@
 import type { Scene } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
-import type { PlayerStats } from './PlayerStats';
 import { guiImports } from './assets/ui';
 import type { Room } from '@colyseus/sdk';
 import type { UpgradeOption } from '../../shared-package/src/utils/Types';
+import { iconsImport } from './assets/icons';
 
 export class LevelUpMenu {
 	private scene: Scene;
@@ -16,7 +16,6 @@ export class LevelUpMenu {
 	private room: Room;
 	private levelUpMessageHandler!: () => void;
 	private upgradeOptionsMessageHandler!: (options: UpgradeOption[]) => void;
-	// private playerStats!: PlayerStats;
 
 	constructor(scene: Scene, room: Room) {
 		this.scene = scene;
@@ -54,9 +53,9 @@ export class LevelUpMenu {
 
 	private createCards(options: UpgradeOption[]) {
 		for (let i = 0; i < 3; i++) {
-			// const icon = this.advTex.getControlByName(
-			// `card_${i}_icon`,
-			// ) as GUI.Image;
+			const icon = this.advTex.getControlByName(
+				`card_${i}_icon`,
+			) as GUI.Image;
 
 			const title = this.advTex.getControlByName(
 				`card_${i}_title`,
@@ -66,7 +65,38 @@ export class LevelUpMenu {
 				`card_${i}_desc`,
 			) as GUI.TextBlock;
 
-			// icon.source = options[i].iconUrl;
+			switch (options[i].iconUrl) {
+				case 'armor':
+					icon.source = iconsImport.armor;
+					break;
+
+				case 'moveSpeed':
+					icon.source = iconsImport.moveSpeed;
+					break;
+
+				case 'damage':
+					icon.source = iconsImport.damage;
+					break;
+
+				case 'attackSpeed':
+					icon.source = iconsImport.attackSpeed;
+					break;
+
+				case 'lifesteal':
+					icon.source = iconsImport.lifesteal;
+					break;
+
+				case 'maxHealth':
+					icon.source = iconsImport.maxHealth;
+					break;
+
+				case 'range':
+					icon.source = iconsImport.range;
+					break;
+				default:
+					console.warn('No icon mapped for', options[i].iconUrl);
+					break;
+			}
 			title.text = options[i].name;
 			description.text = options[i].description;
 		}
@@ -90,21 +120,14 @@ export class LevelUpMenu {
 		window.addEventListener('keydown', this.keyDownHandler);
 
 		this.levelUpMessageHandler = () => {
-			console.log('[LevelUpMenu] received levelUp message');
 			this.onLevelUp();
 		};
 		this.room.onMessage('levelUp', this.levelUpMessageHandler);
 
 		this.upgradeOptionsMessageHandler = (options: UpgradeOption[]) => {
-			console.log('[LevelUpMenu] received upgradeOptions', options);
 			this.currentOptions = options;
 			this.createCards(options);
 			this.levelUpRootContainer.isVisible = true;
-			console.log(
-				'cardsContainer visible?',
-				this.levelUpRootContainer.isVisible,
-				this.levelUpRootContainer.alpha,
-			);
 		};
 		this.room.onMessage(
 			'upgradeOptions',
