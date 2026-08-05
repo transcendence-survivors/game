@@ -10,6 +10,7 @@ export class Hud {
 	private engine: BABYLON.Engine;
 	private scene: BABYLON.Scene;
 	public readonly ready: Promise<void>;
+	private elapsedTime: number = 0;
 
 	constructor(
 		engine: BABYLON.Engine,
@@ -51,16 +52,26 @@ export class Hud {
 		const killText = this.advTex.getControlByName(
 			'KillCounterText',
 		) as GUI.TextBlock;
+		const timerText = this.advTex.getControlByName(
+			'TimerText',
+		) as GUI.TextBlock;
 
-		if (!hpBar || !hpText || !xpBar || !killText) {
+		if (!hpBar || !hpText || !xpBar || !killText || !timerText) {
 			console.error('Missing controls from hud.json', {
 				hpBar,
 				hpText,
 				xpBar,
 				killText,
+				timerText,
 			});
 			return;
 		}
+		const dt = this.scene.getEngine().getDeltaTime();
+		this.elapsedTime += dt;
+		const totalSeconds = Math.floor(this.elapsedTime / 1000);
+		const minutes = Math.floor(totalSeconds / 60);
+		const seconds = totalSeconds % 60;
+		timerText.text = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 		const player = this.room.state.players.get(this.room.sessionId);
 		if (!player) return;
 		const { current, max } = player.life;

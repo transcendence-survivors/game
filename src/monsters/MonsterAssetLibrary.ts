@@ -30,8 +30,8 @@ export class MonsterAssetLibrary {
 		return container;
 	}
 
-	async instantiate(monster: MonsterGLB): Promise<MonsterModel> {
-		const container = await this.loadContainer(monster);
+	async instantiate(monster: string): Promise<MonsterModel> {
+		const container = await this.loadContainer(monster as MonsterGLB);
 		const instance = container.instantiateModelsToScene(
 			(name) => `${monster}_${name}`,
 		);

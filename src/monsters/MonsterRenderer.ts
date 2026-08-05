@@ -7,10 +7,9 @@ import type {
 	MonsterDamageEvent,
 } from '../../../shared-package';
 import { MapGenerator } from '../map/MapGenerator';
-import { MonsterAssetLibrary } from './MonsterAssetLibrary';
+import { MonsterAssetLibrary, type MonsterModel } from './MonsterAssetLibrary';
 import { MonsterView } from './MonsterView';
 import { DamageNumbers } from './DamageNumbers';
-import type { MonsterModel } from '../assets/models';
 
 const FATAL_HEAD_OFFSET = 4;
 const FATAL_BOSS_HEAD_OFFSET = 9;
@@ -95,9 +94,7 @@ export class MonsterRenderer {
 
 	private async addMonster(monster: Monster, monsterId: string) {
 		try {
-			const model = await this.assets.instantiate(
-				monster.kind as MonsterModel,
-			);
+			const model = await this.assets.instantiate(monster.kind);
 			const view = new MonsterView(
 				model.root,
 				model.animationGroups,

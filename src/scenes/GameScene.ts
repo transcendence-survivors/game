@@ -69,7 +69,6 @@ export class GameScene {
 
 	private server!: ServerOrchestrator;
 	private monsters!: MonsterRenderer;
-	// private hud!: PlayerHud;
 	private hud!: Hud;
 	private levelUpMenu!: LevelUpMenu;
 	public readonly ready: Promise<void>;
