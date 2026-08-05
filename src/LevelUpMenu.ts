@@ -2,7 +2,11 @@ import type { Scene } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import { guiImports } from './assets/ui';
 import type { Room } from '@colyseus/sdk';
-import type { UpgradeOption } from '../../shared-package/src/utils/Types';
+import {
+	ClientMessage,
+	ServerMessage,
+	type UpgradeOption,
+} from '../../shared-package';
 import { iconsImport } from './assets/icons';
 
 export class LevelUpMenu {
@@ -107,7 +111,7 @@ export class LevelUpMenu {
 			this.levelUpRootContainer.isVisible = false;
 			return;
 		}
-		this.room.send('requestUpgradeOptions');
+		this.room.send(ClientMessage.RequestUpgradeOptions);
 	}
 
 	private linkControls() {
@@ -122,7 +126,7 @@ export class LevelUpMenu {
 		this.levelUpMessageHandler = () => {
 			this.onLevelUp();
 		};
-		this.room.onMessage('levelUp', this.levelUpMessageHandler);
+		this.room.onMessage(ServerMessage.LevelUp, this.levelUpMessageHandler);
 
 		this.upgradeOptionsMessageHandler = (options: UpgradeOption[]) => {
 			this.currentOptions = options;
@@ -130,7 +134,7 @@ export class LevelUpMenu {
 			this.levelUpRootContainer.isVisible = true;
 		};
 		this.room.onMessage(
-			'upgradeOptions',
+			ServerMessage.UpgradeOptions,
 			this.upgradeOptionsMessageHandler,
 		);
 	}
@@ -147,7 +151,7 @@ export class LevelUpMenu {
 		const chosen = this.currentOptions[index];
 		if (!chosen) return;
 
-		this.room.send('selectUpgrade', { id: chosen.id });
+		this.room.send(ClientMessage.SelectUpgrade, { id: chosen.id });
 
 		this.levelUpQueue--;
 		this.levelUpRootContainer.isVisible = false;

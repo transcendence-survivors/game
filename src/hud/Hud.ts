@@ -7,16 +7,14 @@ import { guiImports } from '../assets/ui';
 export class Hud {
 	private advTex!: GUI.AdvancedDynamicTexture;
 	private room!: COLYSEUS.Room<GameState>;
-	private engine: BABYLON.Engine;
 	private scene: BABYLON.Scene;
 	public readonly ready: Promise<void>;
 
 	constructor(
-		engine: BABYLON.Engine,
+		_engine: BABYLON.Engine,
 		scene: BABYLON.Scene,
 		room: COLYSEUS.Room<GameState>,
 	) {
-		this.engine = engine;
 		this.scene = scene;
 		this.room = room;
 		this.ready = this.show();

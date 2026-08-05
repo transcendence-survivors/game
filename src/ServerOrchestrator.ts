@@ -9,13 +9,14 @@ import {
 	type GameState,
 	type MoveInput,
 	type MovementState,
+	ServerMessage,
+	type WorldSeedMessage,
 } from '../../shared-package/src';
 
 import { models } from './assets/models';
 import { SceneManager } from './SceneManager';
 
 export class ServerOrchestrator {
-	private colyseusSDK!: COLYSEUS.Client;
 	private scene!: BABYLON.Scene;
 	private remoteTargets: Map<
 		string,
@@ -120,14 +121,14 @@ export class ServerOrchestrator {
 		try {
 			await new Promise<void>((resolve) => {
 				this.room.onMessage(
-					'worldSeed',
-					({ seed }: { seed: number }) => {
+					ServerMessage.WorldSeed,
+					({ seed }: WorldSeedMessage) => {
 						this.mapGen = new MapGenerator(this.scene, seed);
 						resolve();
 					},
 				);
 			});
-			this.room.onMessage('gameOver', (player) => {
+			this.room.onMessage(ServerMessage.GameOver, () => {
 				document.exitPointerLock();
 				SceneManager.toLobby();
 			});
@@ -302,7 +303,7 @@ export class ServerOrchestrator {
 				});
 			}
 		});
-		callbacks.onRemove('players', (player, sessionId) => {
+		callbacks.onRemove('players', (_player, sessionId) => {
 			if (sessionId !== this.room.sessionId) {
 				this.removeRemotePlayer(sessionId);
 			}

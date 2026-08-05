@@ -6,7 +6,6 @@ import { guiImports } from '../assets/ui';
 
 export class SettingsMenuRender {
 	private scene: Scene;
-	private engine: BABYLON.Engine;
 	private advTex!: GUI.AdvancedDynamicTexture;
 	public readonly ready: Promise<void>;
 	private camera!: BABYLON.ArcRotateCamera;
@@ -14,13 +13,12 @@ export class SettingsMenuRender {
 	private awaitingBindFor: keyof KeyBindings | null = null;
 
 	constructor(
-		engine: BABYLON.Engine,
+		_engine: BABYLON.Engine,
 		scene: Scene,
 		camera: BABYLON.ArcRotateCamera,
 		keybinds: KeyBindings,
 	) {
 		this.scene = scene;
-		this.engine = engine;
 		this.camera = camera;
 		this.keybinds = keybinds;
 		this.ready = this.init();

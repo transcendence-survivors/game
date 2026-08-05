@@ -1,16 +1,17 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import type {
-	GameState,
-	Monster,
-	MonsterDamageEvent,
+import {
+	ServerMessage,
+	type GameState,
+	type Monster,
+	type MonsterDamageEvent,
 } from '../../../shared-package';
 import { MapGenerator } from '../map/MapGenerator';
 import { MonsterAssetLibrary } from './MonsterAssetLibrary';
 import { MonsterView } from './MonsterView';
 import { DamageNumbers } from './DamageNumbers';
-import type { MonsterModel } from '../assets/models';
+import type { MonsterGLB } from '../assets/models';
 
 const FATAL_HEAD_OFFSET = 4;
 const FATAL_BOSS_HEAD_OFFSET = 9;
@@ -50,8 +51,9 @@ export class MonsterRenderer {
 		callbacks.onRemove('monsters', (_monster, monsterId) => {
 			this.removeMonster(monsterId);
 		});
-		this.room.onMessage('monsterDamage', (events: MonsterDamageEvent[]) =>
-			this.onDamage(events),
+		this.room.onMessage(
+			ServerMessage.MonsterDamage,
+			(events: MonsterDamageEvent[]) => this.onDamage(events),
 		);
 	}
 
@@ -96,7 +98,7 @@ export class MonsterRenderer {
 	private async addMonster(monster: Monster, monsterId: string) {
 		try {
 			const model = await this.assets.instantiate(
-				monster.kind as MonsterModel,
+				monster.kind as MonsterGLB,
 			);
 			const view = new MonsterView(
 				model.root,

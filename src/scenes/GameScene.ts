@@ -16,6 +16,7 @@ import {
 	resolveTerrainCollision,
 	applyHorizontalMovement,
 	applyVerticalMovement,
+	ClientMessage,
 } from '../../../shared-package';
 import { SettingsMenuRender } from '../settings/SettingsMenuRender';
 import { models } from '../assets/models';
@@ -273,7 +274,7 @@ export class GameScene {
 			this.player.position.z = newState.z;
 			this.player.rotation.y = newState.rotationY;
 			this.server.pushPendingInput(input);
-			this.server.send('move', input);
+			this.server.send(ClientMessage.Move, input);
 			if (this.mapGen && this.server.getRoom()?.state) {
 				const { rayX, rayY, rayZ } = this.server.getRoom().state;
 				this.mapGen.syncFromRoom(rayX, rayY, rayZ);
