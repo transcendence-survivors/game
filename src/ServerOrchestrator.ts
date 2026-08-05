@@ -13,6 +13,7 @@ import {
 
 import { models } from './assets/models';
 import { SceneManager } from './SceneManager';
+import { groundHeightUnderHitbox } from '../../shared-package/src/gameplay/Collisions';
 
 export class ServerOrchestrator {
 	private colyseusSDK!: COLYSEUS.Client;
@@ -228,7 +229,11 @@ export class ServerOrchestrator {
 				horizontalMove,
 				state.y,
 			);
-			const groundHeight = world.height(resolved.x, resolved.z);
+			const groundHeight = groundHeightUnderHitbox(
+				world,
+				resolved.x,
+				resolved.z,
+			);
 			const verticalMove = applyVerticalMovement(
 				state.y,
 				state.velocityY,

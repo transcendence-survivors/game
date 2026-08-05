@@ -21,6 +21,7 @@ import { SettingsMenuRender } from '../settings/SettingsMenuRender';
 import { models } from '../assets/models';
 import { Hud } from '../hud/Hud';
 import { LevelUpMenu } from '../LevelUpMenu';
+import { groundHeightUnderHitbox } from '../../../shared-package/src/gameplay/Collisions';
 //TODO FIX THE @module bug
 
 export interface KeyBindings {
@@ -248,7 +249,11 @@ export class GameScene {
 				{ x: horizontalMove.x, z: horizontalMove.z },
 				currentState.y,
 			);
-			const groundHeight = world.height(resolved.x, resolved.z);
+			const groundHeight = groundHeightUnderHitbox(
+				world,
+				resolved.x,
+				resolved.z,
+			);
 			const verticalMove = applyVerticalMovement(
 				currentState.y,
 				currentState.velocityY,
