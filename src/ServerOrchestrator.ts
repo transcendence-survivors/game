@@ -23,6 +23,7 @@ export class ServerOrchestrator {
 	> = new Map();
 	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
 	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
+	private removedWhileLoading = new Set<string>();
 	private mapGen!: MapGenerator;
 	private room!: COLYSEUS.Room<GameState>;
 	private player!: BABYLON.AbstractMesh;
@@ -68,6 +69,11 @@ export class ServerOrchestrator {
 	async addRemotePlayer(sessionId: string) {
 		const result = await BABYLON.ImportMeshAsync(models.player, this.scene);
 		const model = result.meshes[0];
+		if (this.removedWhileLoading.delete(sessionId)) {
+			result.animationGroups.forEach((animation) => animation.dispose());
+			model.dispose();
+			return null;
+		}
 		model.rotationQuaternion = null;
 		this.remotePlayers.set(sessionId, model);
 		result.animationGroups[0].stop();
@@ -102,8 +108,11 @@ export class ServerOrchestrator {
 		if (mesh) {
 			mesh.dispose();
 			this.remotePlayers.delete(sessionId);
+		} else {
+			this.removedWhileLoading.add(sessionId);
 		}
 		this.remoteTargets.delete(sessionId);
+		this.remotePlayerAnims.get(sessionId)?.dispose();
 		this.remotePlayerAnims.delete(sessionId);
 	}
 
@@ -264,6 +273,7 @@ export class ServerOrchestrator {
 				});
 			} else {
 				const mesh = await this.addRemotePlayer(sessionId);
+				if (!mesh) return;
 				this.remoteTargets.set(sessionId, {
 					x: player.x,
 					rotationY: player.rotationY,
@@ -297,5 +307,15 @@ export class ServerOrchestrator {
 				this.removeRemotePlayer(sessionId);
 			}
 		});
+	}
+
+	dispose() {
+		this.remotePlayers.forEach((mesh) => mesh.dispose());
+		this.remotePlayerAnims.forEach((animation) => animation.dispose());
+		this.remotePlayers.clear();
+		this.remotePlayerAnims.clear();
+		this.remoteTargets.clear();
+		this.removedWhileLoading.clear();
+		this.pendingInputs = [];
 	}
 }

@@ -126,6 +126,8 @@ export class GameScene {
 		const canvas = this.engine.getRenderingCanvas();
 		canvas?.removeEventListener('pointerdown', this.boundOnClick);
 		document.removeEventListener('mousemove', this.boundOnMouseMove);
+		this.input?.dispose();
+		this.server?.dispose();
 		this.server.getRoom().leave();
 		this.hud.dispose();
 		this.monsters.dispose();
