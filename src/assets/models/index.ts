@@ -1,6 +1,6 @@
 export const models = {
 	player: new URL('./players/player.glb', import.meta.url).href,
-	// sword: new URL('./weapons/sword.glb', import.meta.url).href,
+	sword: new URL('./weapons/sword.obj', import.meta.url).href,
 	monster: {
 		grunt: new URL('./monster/grunt/grunt.glb', import.meta.url).href,
 		kraklet: new URL('./monster/kraklet/kraklet.glb', import.meta.url).href,
