@@ -6,4 +6,7 @@ export const iconsImport = {
 	lifesteal: new URL('./lifestealIcon.svg', import.meta.url).href,
 	maxHealth: new URL('./maxHealthIcon.svg', import.meta.url).href,
 	range: new URL('./rangeIcon.svg', import.meta.url).href,
+	ppPh: new URL('./pp_placeholder.jpg', import.meta.url).href,
+	readyIndicator: new URL('./readyIndicator.svg', import.meta.url).href,
+	notReadyIndicator: new URL('./notReadyIndicator.svg', import.meta.url).href,
 };

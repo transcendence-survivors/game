@@ -16,7 +16,6 @@ import { SceneManager } from './SceneManager';
 import { groundHeightUnderHitbox } from '../../shared-package/src/gameplay/Collisions';
 
 export class ServerOrchestrator {
-	private colyseusSDK!: COLYSEUS.Client;
 	private scene!: BABYLON.Scene;
 	private remoteTargets: Map<
 		string,
@@ -119,9 +118,9 @@ export class ServerOrchestrator {
 					},
 				);
 			});
-			this.room.onMessage('gameOver', (player) => {
+			this.room.onMessage('gameOver', () => {
 				document.exitPointerLock();
-				SceneManager.toLobby();
+				SceneManager.toEndScreen(this.room);
 			});
 		} catch (error) {
 			console.log(error);

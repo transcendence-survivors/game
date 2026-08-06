@@ -4,6 +4,8 @@ import { GameScene } from './scenes/GameScene';
 import { LobbyScene } from './scenes/LobbyScene';
 import * as COLYSEUS from '@colyseus/sdk';
 import type { GameState } from '../../shared-package/src';
+import { EndingScreen } from './EndingScreen';
+import { WaitingScreen } from './WaitingScreen';
 
 export interface ManagedScene {
 	render(): void;
@@ -37,8 +39,16 @@ export class SceneManager {
 		return SceneManager.set(new GameScene(this.engine, room));
 	}
 
+	static toWaiting(room: COLYSEUS.Room<GameState>) {
+		return SceneManager.set(new WaitingScreen(this.engine, room));
+	}
+
 	static toLobby() {
 		return SceneManager.set(new LobbyScene(this.engine));
+	}
+
+	static toEndScreen(room: COLYSEUS.Room<GameState>) {
+		return SceneManager.set(new EndingScreen(this.engine, room));
 	}
 
 	static async set(newScene: ManagedScene) {

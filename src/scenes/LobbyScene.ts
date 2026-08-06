@@ -43,8 +43,8 @@ export class LobbyScene {
 	}
 
 	dispose() {
-		this.scene.dispose();
 		this.advTex.dispose();
+		this.scene.dispose();
 	}
 
 	getRoom() {
@@ -104,7 +104,7 @@ export class LobbyScene {
 				setStatus(`Room "${roomName}" created`);
 				setBusy(false);
 				if (this.room) {
-					await SceneManager.toGame(this.room);
+					await SceneManager.toWaiting(this.room);
 				}
 			} catch (error) {
 				console.log(error);
@@ -122,7 +122,7 @@ export class LobbyScene {
 				setStatus(`Joined "${roomName}"`);
 				setBusy(false);
 				if (this.room) {
-					await SceneManager.toGame(this.room);
+					await SceneManager.toWaiting(this.room);
 				}
 			} catch (error) {
 				console.log(error);

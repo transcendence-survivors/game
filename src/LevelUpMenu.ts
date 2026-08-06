@@ -57,6 +57,7 @@ export class LevelUpMenu {
 				`card_${i}_icon`,
 			) as GUI.Image;
 
+			icon.stretch = GUI.Image.STRETCH_UNIFORM;
 			const title = this.advTex.getControlByName(
 				`card_${i}_title`,
 			) as GUI.TextBlock;
