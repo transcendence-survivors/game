@@ -79,7 +79,7 @@ export class ServerOrchestrator {
 		this.remotePlayers.set(sessionId, model);
 		result.animationGroups[0].stop();
 		this.remotePlayerAnims.set(sessionId, result.animationGroups[0]);
-		this.mapGen.addShadowCaster(model);
+		this.mapGen.prepareRenderable(model);
 		return model;
 	}
 

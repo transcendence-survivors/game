@@ -116,7 +116,7 @@ export class MonsterRenderer {
 				monster.rotationY,
 			);
 			view.getMeshes().forEach((mesh) =>
-				this.mapGen.addShadowCaster(mesh),
+				this.mapGen.prepareRenderable(mesh),
 			);
 			view.attachNameplate(this.nameplateUi, monster.kind);
 			view.attachHealthBar(this.nameplateUi);

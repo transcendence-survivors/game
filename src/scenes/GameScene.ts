@@ -48,7 +48,6 @@ export class GameScene {
 	private player!: BABYLON.AbstractMesh;
 	private mapGen!: MapGenerator;
 	private debugMenu!: DebugMenu;
-	private light!: BABYLON.Light;
 
 	// TO MOVE LATER
 	public keybinds: KeyBindings = {
@@ -132,9 +131,9 @@ export class GameScene {
 		this.server.getRoom().leave();
 		this.hud.dispose();
 		this.monsters.dispose();
-		this.scene.dispose();
 		this.mapGen.dispose();
 		this.levelUpMenu.dispose();
+		this.scene.dispose();
 	}
 
 	getScene() {
@@ -199,12 +198,6 @@ export class GameScene {
 
 	private createScene() {
 		this.scene = new BABYLON.Scene(this.engine);
-		this.light = new BABYLON.HemisphericLight(
-			'Light',
-			new BABYLON.Vector3(0, 40, 0),
-			this.scene,
-		);
-		this.light.intensity = 0.5;
 	}
 
 	private renderLoop() {
@@ -320,7 +313,7 @@ export class GameScene {
 		this.walkAnim = result.animationGroups[0];
 		this.walkAnim.stop();
 		model.rotationQuaternion = null;
-		this.mapGen.addShadowCaster(model);
+		this.mapGen.prepareRenderable(model);
 		this.server.setMovementState({
 			x: startX,
 			y: startY,
