@@ -35,14 +35,24 @@ export class ServerOrchestrator {
 		velocityY: 0,
 		isGrounded: true,
 	};
+	private seed!: number;
 
-	constructor(scene: BABYLON.Scene, room: COLYSEUS.Room<GameState>) {
+	constructor(
+		scene: BABYLON.Scene,
+		room: COLYSEUS.Room<GameState>,
+		seed: number,
+	) {
 		this.scene = scene;
 		this.room = room;
+		this.seed = seed;
 	}
 
 	async init() {
-		await this.connect();
+		this.mapGen = new MapGenerator(this.scene, this.seed);
+		this.room.onMessage('gameOver', () => {
+			document.exitPointerLock();
+			SceneManager.toEndScreen(this.room);
+		});
 	}
 
 	setPlayer(player: BABYLON.AbstractMesh) {
@@ -105,26 +115,6 @@ export class ServerOrchestrator {
 		}
 		this.remoteTargets.delete(sessionId);
 		this.remotePlayerAnims.delete(sessionId);
-	}
-
-	async connect() {
-		try {
-			await new Promise<void>((resolve) => {
-				this.room.onMessage(
-					'worldSeed',
-					({ seed }: { seed: number }) => {
-						this.mapGen = new MapGenerator(this.scene, seed);
-						resolve();
-					},
-				);
-			});
-			this.room.onMessage('gameOver', () => {
-				document.exitPointerLock();
-				SceneManager.toEndScreen(this.room);
-			});
-		} catch (error) {
-			console.log(error);
-		}
 	}
 
 	getMapGen() {

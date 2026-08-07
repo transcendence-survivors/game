@@ -35,8 +35,8 @@ export class SceneManager {
 		return SceneManager.set(new MainMenuScene(SceneManager.engine));
 	}
 
-	static toGame(room: COLYSEUS.Room<GameState>) {
-		return SceneManager.set(new GameScene(this.engine, room));
+	static toGame(room: COLYSEUS.Room<GameState>, seed: number) {
+		return SceneManager.set(new GameScene(this.engine, room, seed));
 	}
 
 	static toWaiting(room: COLYSEUS.Room<GameState>) {

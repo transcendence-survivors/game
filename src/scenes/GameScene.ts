@@ -74,18 +74,18 @@ export class GameScene {
 	private levelUpMenu!: LevelUpMenu;
 	public readonly ready: Promise<void>;
 
-	constructor(engine: Engine, room: COLYSEUS.Room<GameState>) {
+	constructor(engine: Engine, room: COLYSEUS.Room<GameState>, seed: number) {
 		this.engine = engine;
-		this.ready = this.init(room);
+		this.ready = this.init(room, seed);
 	}
 
-	private async init(room: COLYSEUS.Room<GameState>) {
+	private async init(room: COLYSEUS.Room<GameState>, seed: number) {
 		try {
 			this.createScene();
 			this.createCamera();
 
-			this.server = new ServerOrchestrator(this.scene, room);
-			const seedReady = this.server.connect();
+			this.server = new ServerOrchestrator(this.scene, room, seed);
+			const seedReady = this.server.init();
 			this.settings = new SettingsMenuRender(
 				this.engine,
 				this.scene,
@@ -98,7 +98,7 @@ export class GameScene {
 
 			await seedReady;
 			this.mapGen = this.server.getMapGen();
-
+²
 			await this.addPlayer();
 
 			this.server.setPlayer(this.player);
