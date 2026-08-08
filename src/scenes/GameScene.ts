@@ -98,7 +98,7 @@ export class GameScene {
 
 			await seedReady;
 			this.mapGen = this.server.getMapGen();
-²
+
 			await this.addPlayer();
 
 			this.server.setPlayer(this.player);

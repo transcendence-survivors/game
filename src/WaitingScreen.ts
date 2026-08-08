@@ -1,7 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState } from '../../shared-package/src';
+import type { GameState, Player } from '../../shared-package/src';
 import { iconsImport } from './assets/icons';
 import { guiImports } from './assets/ui';
 import { SceneManager } from './SceneManager';
@@ -52,25 +52,62 @@ export class WaitingScreen {
 	}
 
 	private fillData() {
-		const USERNAME = 'Bayle';
+		const eventsCallbacks = COLYSEUS.getStateCallbacks(this.room);
 
 		for (let i = 0; i < 4; i++) {
-			const pp = this.advTex.getControlByName(
-				`ProfilePicture_${i + 1}`,
-			) as GUI.Image;
-
-			const usernamePh = this.advTex.getControlByName(
-				`Username_${i + 1}`,
-			) as GUI.TextBlock;
-
-			const readyIndicator = this.advTex.getControlByName(
-				`ReadyIndicator_${i + 1}`,
-			) as GUI.Image;
-
-			pp.source = iconsImport.ppPh;
-			usernamePh.text = USERNAME;
-			readyIndicator.source = iconsImport.readyIndicator;
+			this.setSlot(i + 1, null);
 		}
+
+		eventsCallbacks(this.room.state).players.onAdd((player, sessionId) => {
+			if (player.id) this.setSlot(player.id, player);
+
+			eventsCallbacks(player).onChange(() => {
+				if (player.id) this.setSlot(player.id, player);
+			});
+		});
+
+		eventsCallbacks(this.room.state).players.onRemove((player) => {
+			if (player.id) this.setSlot(player.id, null);
+		});
+	}
+
+	private setSlot(slotId: number, player: Player | null) {
+		const container = this.advTex.getControlByName(
+			`Player_${slotId}`,
+		) as GUI.Container;
+
+		if (!container) return;
+
+		if (!player) {
+			container.isVisible = false;
+			return;
+		}
+		container.isVisible = true;
+		const pp = this.advTex.getControlByName(
+			`ProfilePicture_${slotId}`,
+		) as GUI.Image;
+
+		const usernamePh = this.advTex.getControlByName(
+			`Username_${slotId}`,
+		) as GUI.TextBlock;
+
+		const readyIndicator = this.advTex.getControlByName(
+			`ReadyIndicator_${slotId}`,
+		) as GUI.Image;
+
+		if (!pp || !usernamePh || !readyIndicator) return;
+
+		if (!player) {
+			pp.source = iconsImport.ppPh;
+			usernamePh.text = '';
+			readyIndicator.source = iconsImport.notReadyIndicator;
+			return;
+		}
+		pp.source = iconsImport.ppPh;
+		usernamePh.text = player.username;
+		readyIndicator.source = player.ready
+			? iconsImport.readyIndicator
+			: iconsImport.notReadyIndicator;
 	}
 
 	private connectButton() {
@@ -88,7 +125,7 @@ export class WaitingScreen {
 			}
 			const newReady = !player.ready;
 			this.room.send('ready', newReady);
-			text.text = newReady ? 'Ready' : 'Not Ready';
+			text.text = newReady ? 'Ready' : 'NotReady';
 		});
 	}
 }
