@@ -1,6 +1,22 @@
 export const models = {
 	player: new URL('./players/player.glb', import.meta.url).href,
 	sword: new URL('./weapons/sword.obj', import.meta.url).href,
+	axe: new URL(
+		'../../../../../../Axe Double by Quaternius - uHXdfMmO8g.glb',
+		import.meta.url,
+	).href,
+	staff: new URL(
+		'../../../../../../Staff by Quaternius - PnGRvO4Lwd.glb',
+		import.meta.url,
+	).href,
+	bow: new URL(
+		'../../../../../../Wooden Bow by Quaternius - QnpqjLSKFU.glb',
+		import.meta.url,
+	).href,
+	arrow: new URL(
+		'../../../../../../Arrow by Quaternius - Rt48KEPDGt.glb',
+		import.meta.url,
+	).href,
 	monster: {
 		grunt: new URL('./monster/grunt/grunt.glb', import.meta.url).href,
 		kraklet: new URL('./monster/kraklet/kraklet.glb', import.meta.url).href,
