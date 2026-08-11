@@ -1,0 +1,57 @@
+import * as BABYLON from '@babylonjs/core';
+import type { CombatEntity } from '../../../shared-package';
+
+const SNAP_DISTANCE_SQUARED = 36;
+const INTERPOLATION_SPEED = 20;
+
+export class CombatEntityView {
+	protected entity: CombatEntity;
+	protected readonly root: BABYLON.TransformNode;
+	private readonly target = new BABYLON.Vector3();
+
+	constructor(entity: CombatEntity, root: BABYLON.TransformNode) {
+		this.entity = entity;
+		this.root = root;
+		this.snap();
+	}
+
+	synchronize(entity: CombatEntity): void {
+		this.entity = entity;
+	}
+
+	update(deltaTimeS: number, combatTimeS: number): void {
+		this.target.set(this.entity.x, this.entity.y, this.entity.z);
+		if (BABYLON.Vector3.DistanceSquared(this.root.position, this.target) > SNAP_DISTANCE_SQUARED) {
+			this.root.position.copyFrom(this.target);
+		} else {
+			BABYLON.Vector3.LerpToRef(
+				this.root.position,
+				this.target,
+				Math.min(1, deltaTimeS * INTERPOLATION_SPEED),
+				this.root.position,
+			);
+		}
+		this.root.rotation.y = this.entity.rotationY;
+		this.animate(deltaTimeS, combatTimeS);
+	}
+
+	dispose(): void {
+		this.root.dispose();
+	}
+
+	protected animate(_deltaTimeS: number, _combatTimeS: number): void {}
+
+	private snap(): void {
+		this.root.position.set(this.entity.x, this.entity.y, this.entity.z);
+		this.root.rotation.y = this.entity.rotationY;
+	}
+}
+
+export class ProjectileView extends CombatEntityView {
+	protected animate(_deltaTimeS: number, _combatTimeS: number): void {
+		const horizontal = Math.hypot(this.entity.directionX, this.entity.directionZ);
+		if (horizontal > 0.0001 || Math.abs(this.entity.directionY) > 0.0001) {
+			this.root.rotation.x = -Math.atan2(this.entity.directionY, horizontal);
+		}
+	}
+}

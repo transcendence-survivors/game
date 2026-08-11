@@ -15,10 +15,8 @@ import {
 
 import { models } from './assets/models';
 import { SceneManager } from './SceneManager';
-import { SwordRenderer } from './weapons/SwordRenderer';
-import { AxeRenderer } from './weapons/AxeRenderer';
-import { StaffRenderer } from './weapons/StaffRenderer';
-import { BowRenderer } from './weapons/BowRenderer';
+import { CombatRenderer } from './combat/CombatRenderer';
+import { WeaponAttachmentRenderer } from './combat/WeaponAttachmentRenderer';
 
 export class ServerOrchestrator {
 	private scene!: BABYLON.Scene;
@@ -32,10 +30,8 @@ export class ServerOrchestrator {
 	private mapGen!: MapGenerator;
 	private room!: COLYSEUS.Room<GameState>;
 	private player!: BABYLON.AbstractMesh;
-	private swordRenderer!: SwordRenderer;
-	private axeRenderer!: AxeRenderer;
-	private staffRenderer!: StaffRenderer;
-	private bowRenderer!: BowRenderer;
+	private combatRenderer!: CombatRenderer;
+	private weaponAttachments!: WeaponAttachmentRenderer;
 	private pendingInputs: MoveInput[] = [];
 	private movementState: MovementState = {
 		x: 0,
@@ -57,9 +53,7 @@ export class ServerOrchestrator {
 
 	setPlayer(player: BABYLON.AbstractMesh) {
 		this.player = player;
-		void this.swordRenderer.attachToPlayer(this.room.sessionId, player);
-		void this.staffRenderer.attachToPlayer(this.room.sessionId, player);
-		void this.bowRenderer.attachToPlayer(this.room.sessionId, player);
+		this.weaponAttachments.attachToPlayer(this.room.sessionId, player);
 	}
 
 	pushPendingInput(input: MoveInput) {
@@ -91,9 +85,7 @@ export class ServerOrchestrator {
 		result.animationGroups[0].stop();
 		this.remotePlayerAnims.set(sessionId, result.animationGroups[0]);
 		this.mapGen.prepareRenderable(model);
-		void this.swordRenderer.attachToPlayer(sessionId, model);
-		void this.staffRenderer.attachToPlayer(sessionId, model);
-		void this.bowRenderer.attachToPlayer(sessionId, model);
+		this.weaponAttachments.attachToPlayer(sessionId, model);
 		return model;
 	}
 
@@ -119,9 +111,7 @@ export class ServerOrchestrator {
 	}
 
 	removeRemotePlayer(sessionId: string) {
-		this.swordRenderer.removePlayer(sessionId);
-		this.staffRenderer.removePlayer(sessionId);
-		this.bowRenderer.removePlayer(sessionId);
+		this.weaponAttachments.removePlayer(sessionId);
 		const mesh = this.remotePlayers.get(sessionId);
 		if (mesh) {
 			mesh.dispose();
@@ -141,30 +131,16 @@ export class ServerOrchestrator {
 					ServerMessage.WorldSeed,
 					({ seed }: WorldSeedMessage) => {
 						this.mapGen = new MapGenerator(this.scene, seed);
-						this.swordRenderer = new SwordRenderer(
+						this.weaponAttachments = new WeaponAttachmentRenderer(
+							this.scene,
+							this.mapGen,
+						);
+						this.combatRenderer = new CombatRenderer(
 							this.scene,
 							this.room,
 							this.mapGen,
 						);
-						this.swordRenderer.listen();
-						this.axeRenderer = new AxeRenderer(
-							this.scene,
-							this.room,
-							this.mapGen,
-						);
-						this.axeRenderer.listen();
-						this.staffRenderer = new StaffRenderer(
-							this.scene,
-							this.room,
-							this.mapGen,
-						);
-						this.staffRenderer.listen();
-						this.bowRenderer = new BowRenderer(
-							this.scene,
-							this.room,
-							this.mapGen,
-						);
-						this.bowRenderer.listen();
+						this.combatRenderer.listen();
 						resolve();
 					},
 				);
@@ -352,10 +328,8 @@ export class ServerOrchestrator {
 	}
 
 	dispose() {
-		this.swordRenderer?.dispose();
-		this.axeRenderer?.dispose();
-		this.staffRenderer?.dispose();
-		this.bowRenderer?.dispose();
+		this.combatRenderer?.dispose();
+		this.weaponAttachments?.dispose();
 		this.remotePlayers.forEach((mesh) => mesh.dispose());
 		this.remotePlayerAnims.forEach((animation) => animation.dispose());
 		this.remotePlayers.clear();
