@@ -1,5 +1,9 @@
 import * as BABYLON from '@babylonjs/core';
 import { type CombatEntity, weaponConfigRegistry } from '../../../shared-package';
+import {
+	weaponModels,
+	type WeaponModelTransform,
+} from '../assets/models/weapons/weaponModels';
 import { CombatAssetLibrary } from './CombatAssetLibrary';
 import { CombatEntityView, ProjectileView } from './CombatEntityView';
 
@@ -63,7 +67,7 @@ export class CombatViewFactory {
 			}
 			case 'axe': {
 				const root = await this.assets.instantiate('axe', `axe:${id}`);
-				root.scaling.setAll(0.65);
+				this.applyTransform(root, weaponModels.axe.combat!);
 				return new AxeView(entity, root);
 			}
 			case 'fireball': {
@@ -72,11 +76,19 @@ export class CombatViewFactory {
 			}
 			case 'arrow': {
 				const root = await this.assets.instantiate('arrow', `arrow:${id}`);
-				root.scaling.setAll(0.65);
-				root.rotation.z = Math.PI / 2;
+				this.applyTransform(root, weaponModels.arrow.combat!);
 				return new ProjectileView(entity, root);
 			}
 		}
+	}
+
+	private applyTransform(
+		root: BABYLON.TransformNode,
+		transform: WeaponModelTransform,
+	): void {
+		root.position.set(...transform.position);
+		root.rotation.set(...transform.rotation);
+		root.scaling.setAll(transform.scale);
 	}
 
 	dispose(): void {

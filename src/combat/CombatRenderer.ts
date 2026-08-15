@@ -1,7 +1,6 @@
 import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
 import type { CombatEntity, GameState } from '../../../shared-package';
-import type { MapGenerator } from '../map/MapGenerator';
 import { CombatAssetLibrary } from './CombatAssetLibrary';
 import type { CombatEntityView } from './CombatEntityView';
 import { CombatViewFactory } from './CombatViewFactory';
@@ -19,11 +18,11 @@ export class CombatRenderer {
 	constructor(
 		scene: BABYLON.Scene,
 		room: COLYSEUS.Room<GameState>,
-		map: MapGenerator,
+		assets: CombatAssetLibrary,
 	) {
 		this.scene = scene;
 		this.room = room;
-		this.assets = new CombatAssetLibrary(scene, map);
+		this.assets = assets;
 		this.factory = new CombatViewFactory(scene, this.assets);
 		this.observer = scene.onBeforeRenderObservable.add(() => this.update());
 	}
@@ -41,7 +40,6 @@ export class CombatRenderer {
 		this.views.forEach((view) => view.dispose());
 		this.views.clear();
 		this.factory.dispose();
-		this.assets.dispose();
 	}
 
 	private async add(entity: CombatEntity, id: string): Promise<void> {

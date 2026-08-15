@@ -16,6 +16,7 @@ import {
 import { models } from './assets/models';
 import { SceneManager } from './SceneManager';
 import { CombatRenderer } from './combat/CombatRenderer';
+import { CombatAssetLibrary } from './combat/CombatAssetLibrary';
 import { WeaponAttachmentRenderer } from './combat/WeaponAttachmentRenderer';
 
 export class ServerOrchestrator {
@@ -32,6 +33,7 @@ export class ServerOrchestrator {
 	private player!: BABYLON.AbstractMesh;
 	private combatRenderer!: CombatRenderer;
 	private weaponAttachments!: WeaponAttachmentRenderer;
+	private combatAssets!: CombatAssetLibrary;
 	private pendingInputs: MoveInput[] = [];
 	private movementState: MovementState = {
 		x: 0,
@@ -131,14 +133,12 @@ export class ServerOrchestrator {
 					ServerMessage.WorldSeed,
 					({ seed }: WorldSeedMessage) => {
 						this.mapGen = new MapGenerator(this.scene, seed);
-						this.weaponAttachments = new WeaponAttachmentRenderer(
-							this.scene,
-							this.mapGen,
-						);
+						this.combatAssets = new CombatAssetLibrary(this.scene, this.mapGen);
+						this.weaponAttachments = new WeaponAttachmentRenderer(this.combatAssets);
 						this.combatRenderer = new CombatRenderer(
 							this.scene,
 							this.room,
-							this.mapGen,
+							this.combatAssets,
 						);
 						this.combatRenderer.listen();
 						resolve();
@@ -330,6 +330,7 @@ export class ServerOrchestrator {
 	dispose() {
 		this.combatRenderer?.dispose();
 		this.weaponAttachments?.dispose();
+		this.combatAssets?.dispose();
 		this.remotePlayers.forEach((mesh) => mesh.dispose());
 		this.remotePlayerAnims.forEach((animation) => animation.dispose());
 		this.remotePlayers.clear();
