@@ -23,6 +23,24 @@ export interface RadialLightingOptions {
 	quality: RadialLightingQuality;
 }
 
+export function radialVisibility(
+	distance: number,
+	innerRadius: number,
+	outerRadius: number,
+	penumbra: number,
+): number {
+	if (![distance, innerRadius, outerRadius, penumbra].every(Number.isFinite))
+		return 0;
+	if (outerRadius <= innerRadius)
+		return distance <= innerRadius ? 1 : penumbra;
+	const t = Math.min(
+		1,
+		Math.max(0, (distance - innerRadius) / (outerRadius - innerRadius)),
+	);
+	const smooth = t * t * (3 - 2 * t);
+	return Math.min(1, Math.max(0, penumbra + (1 - penumbra) * (1 - smooth)));
+}
+
 const FRAGMENT_SHADER = `
 precision highp float;
 varying vec2 vUV;
@@ -92,7 +110,9 @@ export class RadialLightingPostProcess {
 			if (!camera) return;
 			const depth = this.sceneDepthTexture(camera);
 			if (depth) effect._bindTexture('depthSampler', depth);
-			this.scene.getTransformMatrix().invertToRef(this.inverseViewProjection);
+			this.scene
+				.getTransformMatrix()
+				.invertToRef(this.inverseViewProjection);
 			effect.setMatrix('uInvViewProjection', this.inverseViewProjection);
 			effect.setVector3('uRayPosition', this.rayPosition);
 			effect.setFloat4(
