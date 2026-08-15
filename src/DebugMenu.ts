@@ -5,6 +5,9 @@ interface DebugStats {
 	position: GUI.TextBlock;
 	rotation: GUI.TextBlock;
 	fps: GUI.TextBlock;
+	frameTime: GUI.TextBlock;
+	drawCalls: GUI.TextBlock;
+	resources: GUI.TextBlock;
 }
 
 export class DebugMenu {
@@ -83,6 +86,9 @@ export class DebugMenu {
 			position: addStatLine('Position:'),
 			rotation: addStatLine('Rotation:'),
 			fps: addStatLine('FPS:'),
+			frameTime: addStatLine('Frame:'),
+			drawCalls: addStatLine('Draw calls:'),
+			resources: addStatLine('Resources:'),
 		};
 	}
 
@@ -98,5 +104,12 @@ export class DebugMenu {
 		this.debugStats.rotation.text = `${BABYLON.Tools.ToDegrees(rot).toFixed(1)}°`;
 
 		this.debugStats.fps.text = this.engine.getFps().toFixed(0);
+		this.debugStats.frameTime.text = `${(1000 / Math.max(1, this.engine.getFps())).toFixed(1)} ms`;
+		const scene = player.getScene();
+		const drawCalls = (
+			this.engine as unknown as { _drawCalls?: { current: number } }
+		)._drawCalls?.current;
+		this.debugStats.drawCalls.text = String(drawCalls ?? 0);
+		this.debugStats.resources.text = `${scene.meshes.length} meshes / ${scene.materials.length} materials`;
 	}
 }
