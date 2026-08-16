@@ -3,7 +3,7 @@ import type { Scene, StandardMaterial } from '@babylonjs/core';
 import type {
 	World,
 	WorldColor,
-} from '../../../../shared-package/src/world/World';
+} from '@transcendence/game-shared';
 
 /** Sommet : position (x, y, z) + couleur. */
 type Vtx = readonly [number, number, number, WorldColor];

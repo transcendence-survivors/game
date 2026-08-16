@@ -5,6 +5,8 @@ import { CombatAssetLibrary } from './CombatAssetLibrary';
 import type { CombatEntityView } from './CombatEntityView';
 import { CombatViewFactory } from './CombatViewFactory';
 import { AsyncViewRegistry } from './AsyncViewRegistry';
+import type { WeaponAttachmentRenderer } from './WeaponAttachmentRenderer';
+import { CombatHitboxDebugRenderer } from './CombatHitboxDebugRenderer';
 
 export class CombatRenderer {
 	private readonly assets: CombatAssetLibrary;
@@ -13,16 +15,21 @@ export class CombatRenderer {
 	private readonly observer: BABYLON.Observer<BABYLON.Scene>;
 	private readonly scene: BABYLON.Scene;
 	private readonly room: COLYSEUS.Room<GameState>;
+	private readonly weaponAttachments: WeaponAttachmentRenderer;
+	private readonly hitboxes: CombatHitboxDebugRenderer;
 
 	constructor(
 		scene: BABYLON.Scene,
 		room: COLYSEUS.Room<GameState>,
 		assets: CombatAssetLibrary,
+		weaponAttachments: WeaponAttachmentRenderer,
 	) {
 		this.scene = scene;
 		this.room = room;
 		this.assets = assets;
+		this.weaponAttachments = weaponAttachments;
 		this.factory = new CombatViewFactory(scene, this.assets);
+		this.hitboxes = new CombatHitboxDebugRenderer(scene, room.state);
 		this.observer = scene.onBeforeRenderObservable.add(() => this.update());
 	}
 
@@ -39,10 +46,19 @@ export class CombatRenderer {
 		this.scene.onBeforeRenderObservable.remove(this.observer);
 		this.views.dispose();
 		this.factory.dispose();
+		this.hitboxes.dispose();
+	}
+
+	setHitboxesVisible(visible: boolean): void {
+		this.hitboxes.setVisible(visible);
 	}
 
 	private async add(entity: CombatEntity, id: string): Promise<void> {
 		try {
+			this.weaponAttachments.playAttack(
+				entity.ownerSessionId,
+				entity.weaponKind,
+			);
 			await this.views.add(id, () => this.factory.create(entity, id));
 		} catch (error) {
 			console.error(
@@ -57,6 +73,7 @@ export class CombatRenderer {
 	}
 
 	private update(): void {
+		this.hitboxes.update();
 		const deltaTimeS = this.scene.getEngine().getDeltaTime() / 1000;
 		this.views.forEach((view, id) => {
 			const entity = this.room.state.combatEntities.get(id);

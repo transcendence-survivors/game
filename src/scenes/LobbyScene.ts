@@ -3,7 +3,7 @@ import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
 import { NetworkManager } from '../NetworkManager';
 import { SceneManager } from '../SceneManager';
-import type { GameState } from '../../../shared-package/src';
+import type { GameState } from '@transcendence/game-shared';
 import { guiImports } from '../assets/ui';
 
 export class LobbyScene {

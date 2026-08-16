@@ -53,7 +53,6 @@ export class DamageNumbers {
 		this.floaters.push({ text, anchor, elapsed: 0 });
 	}
 
-	/** Anime les nombres actifs : montée + fondu, puis suppression. */
 	update(deltaTime: number) {
 		for (let i = this.floaters.length - 1; i >= 0; i--) {
 			const floater = this.floaters[i];

@@ -69,38 +69,9 @@ export class LevelUpMenu {
 				`card_${i}_desc`,
 			) as GUI.TextBlock;
 
-			switch (options[i].iconUrl) {
-				case 'armor':
-					icon.source = iconsImport.armor;
-					break;
-
-				case 'moveSpeed':
-					icon.source = iconsImport.moveSpeed;
-					break;
-
-				case 'damage':
-					icon.source = iconsImport.damage;
-					break;
-
-				case 'attackSpeed':
-					icon.source = iconsImport.attackSpeed;
-					break;
-
-				case 'lifesteal':
-					icon.source = iconsImport.lifesteal;
-					break;
-
-				case 'maxHealth':
-					icon.source = iconsImport.maxHealth;
-					break;
-
-				case 'range':
-					icon.source = iconsImport.range;
-					break;
-				default:
-					console.warn('No icon mapped for', options[i].iconUrl);
-					break;
-			}
+			const source = iconsImport[options[i].iconUrl as keyof typeof iconsImport];
+			if (source) icon.source = source;
+			else console.warn('No icon mapped for', options[i].iconUrl);
 			title.text = options[i].name;
 			description.text = options[i].description;
 		}

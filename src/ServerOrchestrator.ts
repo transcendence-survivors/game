@@ -3,21 +3,40 @@ import * as COLYSEUS from '@colyseus/sdk';
 import { MapGenerator } from './map/MapGenerator';
 import type { AuraInstance } from './map/effects/PlayerAuraPlugin';
 import {
-	applyHorizontalMovement,
-	applyVerticalMovement,
-	resolveTerrainCollision,
+	simulatePlayerMovement,
 	type GameState,
 	type MoveInput,
 	type MovementState,
+	ClientMessage,
 	ServerMessage,
 	type WorldSeedMessage,
-} from '../../shared-package/src';
+} from '@transcendence/game-shared';
 
+import type { ModelAssetLibrary } from './assets/ModelAssetLibrary';
 import { models } from './assets/models';
 import { SceneManager } from './SceneManager';
 import { CombatRenderer } from './combat/CombatRenderer';
 import { CombatAssetLibrary } from './combat/CombatAssetLibrary';
 import { WeaponAttachmentRenderer } from './combat/WeaponAttachmentRenderer';
+import { AsyncViewRegistry } from './combat/AsyncViewRegistry';
+
+class RemotePlayerView {
+	readonly mesh: BABYLON.AbstractMesh;
+	readonly animation: BABYLON.AnimationGroup;
+
+	constructor(
+		mesh: BABYLON.AbstractMesh,
+		animation: BABYLON.AnimationGroup,
+	) {
+		this.mesh = mesh;
+		this.animation = animation;
+	}
+
+	dispose(): void {
+		this.animation.dispose();
+		this.mesh.dispose();
+	}
+}
 
 export class ServerOrchestrator {
 	private scene!: BABYLON.Scene;
@@ -25,9 +44,7 @@ export class ServerOrchestrator {
 		string,
 		{ x: number; z: number; y: number; rotationY: number }
 	> = new Map();
-	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
-	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
-	private removedWhileLoading = new Set<string>();
+	private remotePlayers = new AsyncViewRegistry<RemotePlayerView>();
 	private mapGen!: MapGenerator;
 	private room!: COLYSEUS.Room<GameState>;
 	private player!: BABYLON.AbstractMesh;
@@ -35,6 +52,8 @@ export class ServerOrchestrator {
 	private weaponAttachments!: WeaponAttachmentRenderer;
 	private combatAssets!: CombatAssetLibrary;
 	private pendingInputs: MoveInput[] = [];
+	private readonly playerAssets: ModelAssetLibrary;
+	private combatHitboxesVisible = false;
 	private movementState: MovementState = {
 		x: 0,
 		y: 0,
@@ -44,9 +63,14 @@ export class ServerOrchestrator {
 		isGrounded: true,
 	};
 
-	constructor(scene: BABYLON.Scene, room: COLYSEUS.Room<GameState>) {
+	constructor(
+		scene: BABYLON.Scene,
+		room: COLYSEUS.Room<GameState>,
+		playerAssets: ModelAssetLibrary,
+	) {
 		this.scene = scene;
 		this.room = room;
+		this.playerAssets = playerAssets;
 	}
 
 	async init() {
@@ -62,6 +86,15 @@ export class ServerOrchestrator {
 		this.pendingInputs.push(input);
 	}
 
+	setCombatHitboxesVisible(visible: boolean) {
+		this.combatHitboxesVisible = visible;
+		this.combatRenderer?.setHitboxesVisible(visible);
+	}
+
+	setDebugImmortal(enabled: boolean) {
+		this.room.send(ClientMessage.SetDebugImmortal, { enabled });
+	}
+
 	getMovementState() {
 		return this.movementState;
 	}
@@ -75,55 +108,57 @@ export class ServerOrchestrator {
 	}
 
 	async addRemotePlayer(sessionId: string) {
-		const result = await BABYLON.ImportMeshAsync(models.player, this.scene);
-		const model = result.meshes[0];
-		if (this.removedWhileLoading.delete(sessionId)) {
-			result.animationGroups.forEach((animation) => animation.dispose());
-			model.dispose();
-			return null;
-		}
-		model.rotationQuaternion = null;
-		this.remotePlayers.set(sessionId, model);
-		result.animationGroups[0].stop();
-		this.remotePlayerAnims.set(sessionId, result.animationGroups[0]);
-		this.mapGen.prepareRenderable(model);
-		this.weaponAttachments.attachToPlayer(sessionId, model);
-		return model;
+		await this.remotePlayers.add(sessionId, async () => {
+			const result = await this.playerAssets.instantiate(
+				models.player,
+				`remotePlayer:${sessionId}`,
+			);
+			const model = result.root;
+			const animation = result.animationGroups[0];
+			model.rotationQuaternion = null;
+			animation.stop();
+			this.mapGen.prepareRenderable(model);
+			return new RemotePlayerView(model, animation);
+		});
+		const view = this.remotePlayers.get(sessionId);
+		if (!view) return null;
+		this.weaponAttachments.attachToPlayer(sessionId, view.mesh);
+		return view.mesh;
 	}
 
 	updateRemotePlayers(deltaTime: number) {
 		const lerpFactor = Math.min(1, deltaTime * 10);
-		for (const [sessionId, mesh] of this.remotePlayers) {
+		this.remotePlayers.forEach(({ mesh }, sessionId) => {
 			const target = this.remoteTargets.get(sessionId);
-			if (!target) continue;
-			const targetPos = new BABYLON.Vector3(target.x, target.y, target.z);
-			const newPos = BABYLON.Vector3.Lerp(
-				mesh.position,
-				targetPos,
+			if (!target) return;
+			mesh.position.x = BABYLON.Scalar.Lerp(
+				mesh.position.x,
+				target.x,
 				lerpFactor,
 			);
-			mesh.position.copyFrom(newPos);
+			mesh.position.y = BABYLON.Scalar.Lerp(
+				mesh.position.y,
+				target.y,
+				lerpFactor,
+			);
+			mesh.position.z = BABYLON.Scalar.Lerp(
+				mesh.position.z,
+				target.z,
+				lerpFactor,
+			);
 			const targetRotation = target.rotationY + Math.PI;
 			mesh.rotation.y = BABYLON.Scalar.LerpAngle(
 				mesh.rotation.y,
 				targetRotation,
 				lerpFactor,
 			);
-		}
+		});
 	}
 
 	removeRemotePlayer(sessionId: string) {
 		this.weaponAttachments.removePlayer(sessionId);
-		const mesh = this.remotePlayers.get(sessionId);
-		if (mesh) {
-			mesh.dispose();
-			this.remotePlayers.delete(sessionId);
-		} else {
-			this.removedWhileLoading.add(sessionId);
-		}
+		this.remotePlayers.remove(sessionId);
 		this.remoteTargets.delete(sessionId);
-		this.remotePlayerAnims.get(sessionId)?.dispose();
-		this.remotePlayerAnims.delete(sessionId);
 	}
 
 	async connect() {
@@ -133,14 +168,23 @@ export class ServerOrchestrator {
 					ServerMessage.WorldSeed,
 					({ seed }: WorldSeedMessage) => {
 						this.mapGen = new MapGenerator(this.scene, seed);
-						this.combatAssets = new CombatAssetLibrary(this.scene, this.mapGen);
-						this.weaponAttachments = new WeaponAttachmentRenderer(this.combatAssets);
+						this.combatAssets = new CombatAssetLibrary(
+							this.scene,
+							this.mapGen,
+						);
+						this.weaponAttachments = new WeaponAttachmentRenderer(
+							this.combatAssets,
+						);
 						this.combatRenderer = new CombatRenderer(
 							this.scene,
 							this.room,
 							this.combatAssets,
+							this.weaponAttachments,
 						);
 						this.combatRenderer.listen();
+						this.combatRenderer.setHitboxesVisible(
+							this.combatHitboxesVisible,
+						);
 						resolve();
 					},
 				);
@@ -177,10 +221,10 @@ export class ServerOrchestrator {
 					z = this.player.position.z;
 				}
 			} else {
-				const mesh = this.remotePlayers.get(sessionId);
-				if (mesh) {
-					x = mesh.position.x;
-					z = mesh.position.z;
+				const view = this.remotePlayers.get(sessionId);
+				if (view) {
+					x = view.mesh.position.x;
+					z = view.mesh.position.z;
 				}
 			}
 			out.push({
@@ -225,9 +269,12 @@ export class ServerOrchestrator {
 			typeof serverState.lastProcessedSeq !== 'number'
 		)
 			return;
-		this.pendingInputs = this.pendingInputs.filter(
-			(input) => input.seq > serverState.lastProcessedSeq!,
-		);
+		let acknowledged = 0;
+		while (
+			this.pendingInputs[acknowledged]?.seq <= serverState.lastProcessedSeq
+		)
+			acknowledged++;
+		if (acknowledged) this.pendingInputs.splice(0, acknowledged);
 
 		let state: MovementState = {
 			x: serverState.x,
@@ -243,34 +290,12 @@ export class ServerOrchestrator {
 		for (const input of this.pendingInputs) {
 			const player = this.room.state.players.get(this.room.sessionId);
 			if (!player) return;
-			const horizontalMove = applyHorizontalMovement(
-				state,
-				input,
-				input.cameraYaw,
-				player.stats.moveSpeed,
-			);
-			const resolved = resolveTerrainCollision(
+			state = simulatePlayerMovement(
 				world,
 				state,
-				horizontalMove,
-				state.y,
-			);
-			const groundHeight = world.height(resolved.x, resolved.z);
-			const verticalMove = applyVerticalMovement(
-				state.y,
-				state.velocityY,
-				state.isGrounded,
-				groundHeight,
 				input,
+				player.stats.moveSpeed,
 			);
-			state = {
-				x: resolved.x,
-				z: resolved.z,
-				y: verticalMove.y,
-				rotationY: horizontalMove.rotationY,
-				velocityY: verticalMove.velocityY,
-				isGrounded: verticalMove.isGrounded,
-			};
 		}
 		this.movementState = state;
 		this.player.position.x = state.x;
@@ -284,6 +309,14 @@ export class ServerOrchestrator {
 		callbacks.onAdd('players', async (player, sessionId) => {
 			if (sessionId === this.room.sessionId) {
 				if (!this.player) return;
+				callbacks.onAdd(player, 'weapons', (weapon) => {
+					if (!this.player) return;
+					this.weaponAttachments.attachWeapon(
+						sessionId,
+						this.player,
+						weapon.kind,
+					);
+				});
 				this.reconcile(player);
 				callbacks.onChange(player, () => {
 					if (!this.player) return;
@@ -292,6 +325,13 @@ export class ServerOrchestrator {
 			} else {
 				const mesh = await this.addRemotePlayer(sessionId);
 				if (!mesh) return;
+				callbacks.onAdd(player, 'weapons', (weapon) => {
+					this.weaponAttachments.attachWeapon(
+						sessionId,
+						mesh,
+						weapon.kind,
+					);
+				});
 				this.remoteTargets.set(sessionId, {
 					x: player.x,
 					rotationY: player.rotationY,
@@ -312,10 +352,11 @@ export class ServerOrchestrator {
 						rotationY: player.rotationY,
 						y: player.y,
 					});
-					const anim = this.remotePlayerAnims.get(sessionId);
-					if (anim) {
-						if (player.animState === 'moving') anim.play(true);
-						else anim.stop();
+					const view = this.remotePlayers.get(sessionId);
+					if (view) {
+						if (player.animState === 'moving')
+							view.animation.play(true);
+						else view.animation.stop();
 					}
 				});
 			}
@@ -331,12 +372,8 @@ export class ServerOrchestrator {
 		this.combatRenderer?.dispose();
 		this.weaponAttachments?.dispose();
 		this.combatAssets?.dispose();
-		this.remotePlayers.forEach((mesh) => mesh.dispose());
-		this.remotePlayerAnims.forEach((animation) => animation.dispose());
-		this.remotePlayers.clear();
-		this.remotePlayerAnims.clear();
+		this.remotePlayers.dispose();
 		this.remoteTargets.clear();
-		this.removedWhileLoading.clear();
 		this.pendingInputs = [];
 	}
 }

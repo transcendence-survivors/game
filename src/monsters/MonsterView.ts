@@ -1,11 +1,16 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
+import {
+	BOSS_MODEL_SCALE,
+	getMonsterCompoundHitboxes,
+	type MonsterAnimState,
+	type MonsterHitboxPrimitive,
+} from '../../../shared-package';
+import { MONSTER_HITBOX_RENDERING_GROUP } from '../combat/DebugRenderingGroups';
 
 export type MonsterAnimation = 'idle' | 'walk' | 'attack';
 
 const LERP_SPEED = 10;
-const BOSS_SCALE = 2.5;
-const MOVE_EPSILON = 0.05;
 const NAME_FONT_SIZE = 14;
 const NAME_COLOR = 'white';
 const BOSS_NAME_FONT_SIZE = 20;
@@ -30,36 +35,49 @@ const MODEL_YAW_OFFSET = Math.PI;
 const BODY_HIDE_MARGIN = 0.4;
 const BODY_SHOW_MARGIN = 1.6;
 
+const DAMAGE_FLASH_DURATION_S = 0.14;
+const DAMAGE_FLASH_MAX_ALPHA = 0.14;
+const DAMAGE_FLASH_COLOR = new BABYLON.Color3(1, 0.08, 0.06);
+
 export class MonsterView {
 	private root!: BABYLON.TransformNode;
 	private animations = new Map<string, BABYLON.AnimationGroup>();
 	private currentAnimation: MonsterAnimation | null = null;
 	private target = { x: 0, z: 0, rotationY: 0 };
-	private attacking = false;
+	private animationState: MonsterAnimState = 'idle';
 	private isBoss = false;
+	private readonly kind: string;
 	private nameLabel: GUI.TextBlock | null = null;
 	private nameAnchor: BABYLON.TransformNode | null = null;
 	private healthFrame: GUI.Rectangle | null = null;
 	private healthFill: GUI.Rectangle | null = null;
 	private lastHealthRatio = -1;
 	private childMeshes: BABYLON.AbstractMesh[] | null = null;
-	/** Volume englobant approché (cylindre), mesuré une seule fois. */
 	private bodyMeasured = false;
 	private bodyRadiusXZ = 0;
 	private bodyMinY = 0;
 	private bodyMaxY = 0;
 	private bodyHidden = false;
+	private damageFlashRemainingS = 0;
+	private readonly hitboxParts: readonly MonsterHitboxPrimitive[];
+	private readonly hitboxMaterial: BABYLON.Material;
+	private readonly hitboxMeshes: BABYLON.Mesh[] = [];
 
 	constructor(
 		root: BABYLON.TransformNode,
 		animationGroups: BABYLON.AnimationGroup[],
+		kind: string,
 		isBoss: boolean,
+		hitboxMaterial: BABYLON.Material,
 	) {
 		this.root = root;
+		this.kind = kind;
 		this.isBoss = isBoss;
+		this.hitboxParts = getMonsterCompoundHitboxes(kind, isBoss);
+		this.hitboxMaterial = hitboxMaterial;
 		this.root.rotationQuaternion = null;
 		if (isBoss) {
-			this.root.scaling = this.root.scaling.scale(BOSS_SCALE);
+			this.root.scaling = this.root.scaling.scale(BOSS_MODEL_SCALE);
 		}
 		for (const group of animationGroups) {
 			const name = group.name.split('_').pop() ?? group.name;
@@ -115,8 +133,90 @@ export class MonsterView {
 		this.target = { x, z, rotationY };
 	}
 
-	setAttacking(attacking: boolean) {
-		this.attacking = attacking;
+	setAnimationState(animationState: MonsterAnimState) {
+		this.animationState = animationState;
+	}
+
+	setHitboxVisible(visible: boolean) {
+		if (this.hitboxMeshes.length === 0 && visible) {
+			this.hitboxParts.forEach((part, index) => {
+				const name = `${this.root.name}_hitbox_${index}`;
+				const mesh =
+					part.shape === 'sphere'
+						? BABYLON.MeshBuilder.CreateSphere(
+								name,
+								{
+									diameter: part.radius * 2,
+									segments: 16,
+								},
+								this.root.getScene(),
+							)
+						: BABYLON.MeshBuilder.CreateCylinder(
+								name,
+								{
+									diameter: part.radius * 2,
+									height: part.height,
+									tessellation: 24,
+								},
+								this.root.getScene(),
+							);
+				mesh.material = this.hitboxMaterial;
+				mesh.isPickable = false;
+				mesh.renderingGroupId = MONSTER_HITBOX_RENDERING_GROUP;
+				this.hitboxMeshes.push(mesh);
+			});
+			this.updateHitboxPosition(0);
+		}
+		this.hitboxMeshes.forEach((mesh) => {
+			mesh.isVisible = visible;
+		});
+	}
+
+	private updateHitboxPosition(animationTimeS: number) {
+		if (this.hitboxMeshes.length === 0) return;
+		const posedParts = getMonsterCompoundHitboxes(
+			this.kind,
+			this.isBoss,
+			this.animationState,
+			animationTimeS,
+		);
+		// Le modèle porte déjà MODEL_YAW_OFFSET; annule ce demi-tour pour
+		// replacer les volumes calculés dans le repère d'origine du GLB.
+		const angle = this.root.rotation.y + Math.PI;
+		const sin = Math.sin(angle);
+		const cos = Math.cos(angle);
+		this.hitboxMeshes.forEach((mesh, index) => {
+			const part = posedParts[index];
+			mesh.position.set(
+				this.root.position.x + part.offsetX * cos + part.offsetZ * sin,
+				this.root.position.y + part.offsetY,
+				this.root.position.z + part.offsetZ * cos - part.offsetX * sin,
+			);
+		});
+	}
+
+	flashDamage() {
+		this.damageFlashRemainingS = DAMAGE_FLASH_DURATION_S;
+		for (const mesh of this.getMeshes()) {
+			mesh.overlayColor.copyFrom(DAMAGE_FLASH_COLOR);
+			mesh.overlayAlpha = DAMAGE_FLASH_MAX_ALPHA;
+			mesh.renderOverlay = true;
+		}
+	}
+
+	private updateDamageFlash(deltaTime: number) {
+		if (this.damageFlashRemainingS <= 0) return;
+		this.damageFlashRemainingS = Math.max(
+			0,
+			this.damageFlashRemainingS - deltaTime,
+		);
+		const alpha =
+			DAMAGE_FLASH_MAX_ALPHA *
+			(this.damageFlashRemainingS / DAMAGE_FLASH_DURATION_S);
+		for (const mesh of this.getMeshes()) {
+			mesh.overlayAlpha = alpha;
+			mesh.renderOverlay = this.damageFlashRemainingS > 0;
+		}
 	}
 
 	private ensureHeadAnchor(): BABYLON.TransformNode {
@@ -224,13 +324,10 @@ export class MonsterView {
 		deltaTime: number,
 		groundHeight: number,
 		cameraPosition: BABYLON.Vector3 | null,
+		animationTimeS: number,
 	) {
 		const lerpFactor = Math.min(1, deltaTime * LERP_SPEED);
 		const position = this.root.position;
-		const distance = Math.hypot(
-			this.target.x - position.x,
-			this.target.z - position.z,
-		);
 		position.x = BABYLON.Scalar.Lerp(position.x, this.target.x, lerpFactor);
 		position.z = BABYLON.Scalar.Lerp(position.z, this.target.z, lerpFactor);
 		position.y = groundHeight;
@@ -239,8 +336,9 @@ export class MonsterView {
 			this.target.rotationY + MODEL_YAW_OFFSET,
 			lerpFactor,
 		);
-		if (this.attacking) this.play('attack');
-		else this.play(distance > MOVE_EPSILON ? 'walk' : 'idle');
+		this.play(this.animationState);
+		this.updateDamageFlash(deltaTime);
+		this.updateHitboxPosition(animationTimeS);
 		if (cameraPosition) this.updateCameraOcclusion(cameraPosition);
 	}
 
@@ -249,6 +347,8 @@ export class MonsterView {
 		this.healthFill?.dispose();
 		this.healthFrame?.dispose();
 		this.nameAnchor?.dispose();
+		this.hitboxMeshes.forEach((mesh) => mesh.dispose());
+		this.hitboxMeshes.length = 0;
 		this.animations.forEach((group) => group.dispose());
 		this.animations.clear();
 		this.root.dispose();

@@ -15,8 +15,19 @@ export class DebugMenu {
 	private debugStats!: DebugStats;
 	private engine!: BABYLON.Engine;
 	private lastUpdateMs = 0;
-	constructor(engine: BABYLON.Engine) {
+	private hitboxesVisible = false;
+	private immortalEnabled = false;
+	private readonly onHitboxesChanged: (visible: boolean) => void;
+	private readonly onImmortalChanged: (enabled: boolean) => void;
+
+	constructor(
+		engine: BABYLON.Engine,
+		onHitboxesChanged: (visible: boolean) => void = () => {},
+		onImmortalChanged: (enabled: boolean) => void = () => {},
+	) {
 		this.engine = engine;
+		this.onHitboxesChanged = onHitboxesChanged;
+		this.onImmortalChanged = onImmortalChanged;
 		this.initGUI();
 	}
 
@@ -28,7 +39,7 @@ export class DebugMenu {
 		ui.idealWidth = 1920;
 		ui.idealHeight = 1080;
 		debugMenu.width = '22%';
-		debugMenu.height = '40%';
+		debugMenu.height = '52%';
 		debugMenu.cornerRadius = 10;
 		debugMenu.thickness = 1;
 		debugMenu.color = 'white';
@@ -90,6 +101,68 @@ export class DebugMenu {
 			drawCalls: addStatLine('Draw calls:'),
 			resources: addStatLine('Resources:'),
 		};
+
+		const hitboxRow = new GUI.StackPanel('hitboxToggleRow');
+		hitboxRow.isVertical = false;
+		hitboxRow.height = '34px';
+		hitboxRow.paddingTop = '8px';
+
+		const hitboxLabel = new GUI.TextBlock(
+			'hitboxToggleLabel',
+			'Hitboxes 3D',
+		);
+		hitboxLabel.color = '#ff8b72';
+		hitboxLabel.fontSize = 16;
+		hitboxLabel.width = '190px';
+		hitboxLabel.textHorizontalAlignment =
+			GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+		hitboxRow.addControl(hitboxLabel);
+
+		const hitboxToggle = new GUI.Checkbox('hitboxToggle');
+		hitboxToggle.width = '22px';
+		hitboxToggle.height = '22px';
+		hitboxToggle.color = '#ff5c5c';
+		hitboxToggle.background = '#252525';
+		hitboxToggle.isChecked = this.hitboxesVisible;
+		hitboxToggle.onIsCheckedChangedObservable.add((visible) => {
+			this.hitboxesVisible = visible;
+			this.onHitboxesChanged(visible);
+		});
+		hitboxRow.addControl(hitboxToggle);
+		panel.addControl(hitboxRow);
+
+		const immortalRow = new GUI.StackPanel('immortalToggleRow');
+		immortalRow.isVertical = false;
+		immortalRow.height = '34px';
+		immortalRow.paddingTop = '8px';
+
+		const immortalLabel = new GUI.TextBlock(
+			'immortalToggleLabel',
+			'Mode immortel',
+		);
+		immortalLabel.color = '#ffd166';
+		immortalLabel.fontSize = 16;
+		immortalLabel.width = '190px';
+		immortalLabel.textHorizontalAlignment =
+			GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+		immortalRow.addControl(immortalLabel);
+
+		const immortalToggle = new GUI.Checkbox('immortalToggle');
+		immortalToggle.width = '22px';
+		immortalToggle.height = '22px';
+		immortalToggle.color = '#ffd166';
+		immortalToggle.background = '#252525';
+		immortalToggle.isChecked = this.immortalEnabled;
+		immortalToggle.onIsCheckedChangedObservable.add((enabled) => {
+			this.immortalEnabled = enabled;
+			this.onImmortalChanged(enabled);
+		});
+		immortalRow.addControl(immortalToggle);
+		panel.addControl(immortalRow);
+	}
+
+	areHitboxesVisible(): boolean {
+		return this.hitboxesVisible;
 	}
 
 	updateDebugMenu(player: BABYLON.AbstractMesh) {

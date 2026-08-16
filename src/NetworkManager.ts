@@ -1,5 +1,5 @@
 import { Client } from '@colyseus/sdk';
-import type { GameState } from '../../shared-package/src';
+import type { GameState } from '@transcendence/game-shared';
 
 export class NetworkManager {
 	private client!: Client;

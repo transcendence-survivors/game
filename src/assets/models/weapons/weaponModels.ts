@@ -27,27 +27,33 @@ export const weaponModels: Record<
 		origin: [0, 0, 0],
 		longAxis: 'z',
 		attachment: null,
-		combat: { position: [0, 0, 0], rotation: [0, 0, Math.PI / 2], scale: 0.65 },
+		combat: { position: [0, 0, 0], rotation: [Math.PI / 2, 0, 0], scale: 0.82 },
 	},
 	axe: {
 		url: models.axe,
 		source: 'Axe Double by Quaternius',
 		dimensions: [0.871, 2.151, 0.136],
 		origin: [0, 0, 0],
-		longAxis: 'z',
+		longAxis: 'y',
 		attachment: null,
-		combat: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 0.65 },
+		combat: {
+			position: [0, 0, 0],
+			rotation: [Math.PI / 2, 0, 0],
+			scale: 2,
+		},
 	},
 	bow: {
 		url: models.bow,
 		source: 'Wooden Bow by Quaternius',
 		dimensions: [0.533, 1.974, 0.088],
 		origin: [0, 0, 0],
-		longAxis: 'z',
+		longAxis: 'y',
 		attachment: {
-			position: [0.55, 0.9, -0.2],
-			rotation: [0, Math.PI / 2, -Math.PI / 14],
-			scale: 0.65,
+			// Le modele enfant est couche dans WeaponAttachmentRenderer : branches
+			// de gauche a droite et courbure dirigee vers +Z.
+			position: [0, 1.05, 0.95],
+			rotation: [0, 0, 0],
+			scale: 1,
 		},
 		combat: null,
 	},
@@ -71,9 +77,11 @@ export const weaponModels: Record<
 		origin: [0, 0, 0],
 		longAxis: 'z',
 		attachment: {
-			position: [0.55, 1.05, 0.15],
+			// +Z est l'avant autoritaire du joueur : le pommeau reste centre devant
+			// le torse pendant que la lame balaie autour de ce point fixe.
+			position: [0, 1.05, 0.9],
 			rotation: [0, 0, -Math.PI / 7],
-			scale: 0.65,
+			scale: 1.875,
 		},
 		combat: null,
 	},

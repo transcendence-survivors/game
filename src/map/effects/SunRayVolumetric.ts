@@ -1,21 +1,14 @@
 import {
 	Color4,
-	Constants,
 	DynamicTexture,
 	Effect,
 	GPUParticleSystem,
 	ParticleSystem,
 	PostProcess,
 } from '@babylonjs/core';
-import type {
-	Camera,
-	Color3,
-	InternalTexture,
-	RenderTargetWrapper,
-	Scene,
-	Vector3,
-} from '@babylonjs/core';
+import type { Color3, Scene, Vector3 } from '@babylonjs/core';
 import { Vector3 as Vec3 } from '@babylonjs/core';
+import { sceneDepthTexture } from './SceneDepthTexture';
 
 export interface SunRayOptions {
 	readonly color: Color3;
@@ -176,7 +169,11 @@ export class SunRayVolumetric {
 			if (cam === null) {
 				return;
 			}
-			const depth = this.sceneDepthTexture(cam);
+			const depth = sceneDepthTexture(
+				this.scene,
+				cam,
+				'sunray-scene-depth',
+			);
 			if (depth !== null) {
 				effect._bindTexture('depthSampler', depth);
 			}
@@ -240,40 +237,11 @@ export class SunRayVolumetric {
 		this.dust.start();
 	}
 
-	getbeamCenter(): Vector3 {
-		return this.center;
-	}
-	getbeamRadius(): number {
-		return this.radius;
-	}
-
 	setStrike(x: number, y: number, z: number): void {
 		this.center.x = x;
 		this.center.y = y;
 		this.center.z = z;
 	}
-
-	private sceneDepthTexture(cam: Camera): InternalTexture | null {
-		const first = (
-			cam as unknown as { _getFirstPostProcess(): PostProcess | null }
-		)._getFirstPostProcess();
-		if (first === null) {
-			return null;
-		}
-		const wrapper: RenderTargetWrapper = first.inputTexture;
-		if (wrapper.depthStencilTexture === null) {
-			wrapper.createDepthStencilTexture(
-				0,
-				false,
-				this.scene.getEngine().isStencilEnable,
-				1,
-				Constants.TEXTUREFORMAT_DEPTH24_STENCIL8,
-				'sunray-scene-depth',
-			);
-		}
-		return wrapper.depthStencilTexture;
-	}
-
 	dispose(): void {
 		this.dust.dispose();
 		this.post.dispose();

@@ -3,7 +3,7 @@ import { MainMenuScene } from './scenes/MainMenuScene';
 import { GameScene } from './scenes/GameScene';
 import { LobbyScene } from './scenes/LobbyScene';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState } from '../../shared-package/src';
+import type { GameState } from '@transcendence/game-shared';
 
 export interface ManagedScene {
 	render(): void;

@@ -1,17 +1,15 @@
 import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
-import { World, ChunkManager } from './world';
+import { World, ACCESS_RADIUS } from '@transcendence/game-shared';
+import { ChunkManager } from './world/ChunkManager';
 import { SunRayVolumetric } from './effects/SunRayVolumetric';
 import { RadialLightingPostProcess } from './effects/RadialLightingPostProcess';
 import {
 	PlayerAuraPlugin,
 	type AuraInstance,
 } from './effects/PlayerAuraPlugin';
-import { ACCESS_RADIUS } from '../../../shared-package/src';
 
 export class MapGenerator {
-	/** Rayon (unités monde) de la zone éclairée jouable — même valeur autoritative
-	 * que le serveur (shared) pour que la prédiction client colle au clamp serveur. */
 	readonly ZONE_RADIUS = ACCESS_RADIUS;
 
 	private scene: Scene;
@@ -22,7 +20,6 @@ export class MapGenerator {
 	private sunRay!: SunRayVolumetric;
 	private radialLighting!: RadialLightingPostProcess;
 	private rayPos!: BABYLON.Vector3;
-	/** Rideau cylindrique lumineux marquant la frontière de la zone accessible. */
 	private zoneBoundary!: BABYLON.Mesh;
 
 	constructor(scene: Scene, seed: number) {
@@ -45,6 +42,12 @@ export class MapGenerator {
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
 		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
 		this.terrainMaterial.disableLighting = true;
+		// Sans Light Babylon, StandardMaterial laisse sa contribution diffuse a
+		// zero. Le blanc emissif sert ici uniquement d'albedo non eclaire : il est
+		// multiplie par les couleurs de sommets du terrain. Le post-process radial
+		// recoit ainsi les vraies teintes herbe/roche/neige et reste l'unique etape
+		// qui calcule leur luminosite dans le cylindre.
+		this.terrainMaterial.emissiveColor = BABYLON.Color3.White();
 		// Auras des joueurs dessinées à même le terrain (voir PlayerAuraPlugin) :
 		// elles épousent le relief car calculées par pixel. Le matériau n'est
 		// donc PAS figé — ses uniforms d'aura doivent être rebindés chaque frame.
@@ -64,9 +67,9 @@ export class MapGenerator {
 		);
 		this.chunkManager.update(BABYLON.Vector3.Zero());
 		this.radialLighting = new RadialLightingPostProcess(this.scene, {
-			innerRadius: this.ZONE_RADIUS * 0.35,
+			innerRadius: this.ZONE_RADIUS * 0.45,
 			outerRadius: this.ZONE_RADIUS,
-			penumbra: 0.12,
+			penumbra: 0.22,
 			lightColor: beamColor,
 			quality: 'high',
 		});
@@ -158,23 +161,6 @@ export class MapGenerator {
 		this.chunkManager.update(this.rayPos);
 	}
 
-	/**
-	 * Projette (x, z) sur le bord du disque `ZONE_RADIUS` autour du rayon si le
-	 * point en est sorti — prédiction locale du clamp que le serveur applique de
-	 * façon autoritative. Repousse le joueur y compris quand c'est le rayon qui
-	 * avance vers lui.
-	 */
-	clampToZone(x: number, z: number): { x: number; z: number } {
-		const ox = x - this.rayPos.x;
-		const oz = z - this.rayPos.z;
-		const distSq = ox * ox + oz * oz;
-		if (distSq <= this.ZONE_RADIUS * this.ZONE_RADIUS) return { x, z };
-		const dist = Math.sqrt(distSq);
-		const scale = this.ZONE_RADIUS / dist;
-		return { x: this.rayPos.x + ox * scale, z: this.rayPos.z + oz * scale };
-	}
-
-	/** Met à jour le rendu des auras (positions/portées des joueurs) par frame. */
 	updateAuras(auras: readonly AuraInstance[], dtSeconds: number) {
 		this.auraPlugin.update(auras, dtSeconds);
 	}

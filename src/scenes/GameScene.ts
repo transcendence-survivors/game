@@ -10,19 +10,16 @@ import { MonsterRenderer } from '../monsters';
 
 import {
 	type MoveInput,
-	type MovementState,
 	GameState,
 	getCameraYaw,
-	resolveTerrainCollision,
-	applyHorizontalMovement,
-	applyVerticalMovement,
+	simulatePlayerMovement,
 	ClientMessage,
 } from '../../../shared-package';
 import { SettingsMenuRender } from '../settings/SettingsMenuRender';
+import { ModelAssetLibrary } from '../assets/ModelAssetLibrary';
 import { models } from '../assets/models';
 import { Hud } from '../hud/Hud';
 import { LevelUpMenu } from '../LevelUpMenu';
-//TODO FIX THE @module bug
 
 export interface KeyBindings {
 	forward: string;
@@ -48,8 +45,8 @@ export class GameScene {
 	private player!: BABYLON.AbstractMesh;
 	private mapGen!: MapGenerator;
 	private debugMenu!: DebugMenu;
+	private playerAssets!: ModelAssetLibrary;
 
-	// TO MOVE LATER
 	public keybinds: KeyBindings = {
 		forward: 'w',
 		backward: 's',
@@ -69,7 +66,6 @@ export class GameScene {
 
 	private server!: ServerOrchestrator;
 	private monsters!: MonsterRenderer;
-	// private hud!: PlayerHud;
 	private hud!: Hud;
 	private levelUpMenu!: LevelUpMenu;
 	public readonly ready: Promise<void>;
@@ -84,7 +80,12 @@ export class GameScene {
 			this.createScene();
 			this.createCamera();
 
-			this.server = new ServerOrchestrator(this.scene, room);
+			this.playerAssets = new ModelAssetLibrary(this.scene);
+			this.server = new ServerOrchestrator(
+				this.scene,
+				room,
+				this.playerAssets,
+			);
 			const seedReady = this.server.connect();
 			this.settings = new SettingsMenuRender(
 				this.engine,
@@ -94,7 +95,14 @@ export class GameScene {
 			);
 			await this.settings.ready;
 			this.settings.close();
-			this.debugMenu = new DebugMenu(this.engine);
+			this.debugMenu = new DebugMenu(
+				this.engine,
+				(visible) => {
+					this.monsters?.setHitboxesVisible(visible);
+					this.server?.setCombatHitboxesVisible(visible);
+				},
+				(enabled) => this.server?.setDebugImmortal(enabled),
+			);
 
 			await seedReady;
 			this.mapGen = this.server.getMapGen();
@@ -107,6 +115,12 @@ export class GameScene {
 			this.server.listenToState();
 			this.monsters = new MonsterRenderer(this.scene, room, this.mapGen);
 			this.monsters.listen();
+			this.monsters.setHitboxesVisible(
+				this.debugMenu.areHitboxesVisible(),
+			);
+			this.server.setCombatHitboxesVisible(
+				this.debugMenu.areHitboxesVisible(),
+			);
 
 			this.hud = new Hud(this.engine, this.scene, room);
 			await this.hud.ready;
@@ -133,6 +147,7 @@ export class GameScene {
 		this.monsters.dispose();
 		this.mapGen.dispose();
 		this.levelUpMenu.dispose();
+		this.playerAssets.dispose();
 		this.scene.dispose();
 	}
 
@@ -230,37 +245,12 @@ export class GameScene {
 			const room = this.server.getRoom();
 			const playerInRoom = room.state.players.get(room.sessionId);
 			if (!playerInRoom) return;
-			const horizontalMove = applyHorizontalMovement(
+			const newState = simulatePlayerMovement(
+				world,
 				currentState,
 				input,
-				input.cameraYaw,
 				playerInRoom.stats.moveSpeed,
 			);
-			const resolved = resolveTerrainCollision(
-				world,
-				{
-					x: currentState.x,
-					z: currentState.z,
-				},
-				{ x: horizontalMove.x, z: horizontalMove.z },
-				currentState.y,
-			);
-			const groundHeight = world.height(resolved.x, resolved.z);
-			const verticalMove = applyVerticalMovement(
-				currentState.y,
-				currentState.velocityY,
-				currentState.isGrounded,
-				groundHeight,
-				input,
-			);
-			const newState: MovementState = {
-				x: resolved.x,
-				z: resolved.z,
-				rotationY: horizontalMove.rotationY,
-				y: verticalMove.y,
-				velocityY: verticalMove.velocityY,
-				isGrounded: verticalMove.isGrounded,
-			};
 			this.server.setMovementState(newState);
 			this.player.position.x = newState.x;
 			this.player.position.y = newState.y;
@@ -299,8 +289,11 @@ export class GameScene {
 	}
 
 	private async addPlayer() {
-		const result = await BABYLON.ImportMeshAsync(models.player, this.scene);
-		const model = result.meshes[0];
+		const result = await this.playerAssets.instantiate(
+			models.player,
+			'localPlayer',
+		);
+		const model = result.root;
 		const spawn = this.server.getLocalSpawn();
 		const startX = spawn?.x ?? 0;
 		const startZ = spawn?.z ?? 0;

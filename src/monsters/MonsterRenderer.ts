@@ -8,10 +8,12 @@ import {
 	type MonsterDamageEvent,
 } from '../../../shared-package';
 import { MapGenerator } from '../map/MapGenerator';
-import { MonsterAssetLibrary } from './MonsterAssetLibrary';
+import { ModelAssetLibrary } from '../assets/ModelAssetLibrary';
 import { MonsterView } from './MonsterView';
 import { DamageNumbers } from './DamageNumbers';
-import type { MonsterGLB } from '../assets/models';
+import { models, type MonsterGLB } from '../assets/models';
+import { preserveWorldDepthForDebug } from '../combat/DebugRenderingGroups';
+import { AsyncViewRegistry } from '../combat/AsyncViewRegistry';
 
 const FATAL_HEAD_OFFSET = 4;
 const FATAL_BOSS_HEAD_OFFSET = 9;
@@ -20,11 +22,12 @@ export class MonsterRenderer {
 	private scene!: BABYLON.Scene;
 	private room!: COLYSEUS.Room<GameState>;
 	private mapGen!: MapGenerator;
-	private assets!: MonsterAssetLibrary;
+	private assets!: ModelAssetLibrary;
 	private nameplateUi!: GUI.AdvancedDynamicTexture;
 	private damageNumbers!: DamageNumbers;
-	private views = new Map<string, MonsterView>();
-	private removedWhileLoading = new Set<string>();
+	private hitboxMaterial: BABYLON.StandardMaterial;
+	private hitboxesVisible = false;
+	private views = new AsyncViewRegistry<MonsterView>();
 
 	constructor(
 		scene: BABYLON.Scene,
@@ -34,13 +37,31 @@ export class MonsterRenderer {
 		this.scene = scene;
 		this.room = room;
 		this.mapGen = mapGen;
-		this.assets = new MonsterAssetLibrary(scene);
+		this.assets = new ModelAssetLibrary(scene);
+		preserveWorldDepthForDebug(scene);
+		this.hitboxMaterial = new BABYLON.StandardMaterial(
+			'monsterHitboxMaterial',
+			scene,
+		);
+		this.hitboxMaterial.disableLighting = true;
+		this.hitboxMaterial.emissiveColor.set(1, 0.04, 0.02);
+		this.hitboxMaterial.alpha = 0.9;
+		this.hitboxMaterial.backFaceCulling = false;
+		this.hitboxMaterial.wireframe = true;
+		// Le debug ne doit pas remplacer la profondeur du décor utilisée par le
+		// post-process radial, sinon ses grands volumes teintent toute l'image.
+		this.hitboxMaterial.disableDepthWrite = true;
 		this.nameplateUi = GUI.AdvancedDynamicTexture.CreateFullscreenUI(
 			'monsterNameplates',
 			true,
 			scene,
 		);
 		this.damageNumbers = new DamageNumbers(scene, this.nameplateUi);
+	}
+
+	setHitboxesVisible(visible: boolean) {
+		this.hitboxesVisible = visible;
+		this.views.forEach((view) => view.setHitboxVisible(visible));
 	}
 
 	listen() {
@@ -59,23 +80,25 @@ export class MonsterRenderer {
 
 	update(deltaTime: number) {
 		const cameraPosition = this.scene.activeCamera?.globalPosition ?? null;
-		for (const [monsterId, view] of this.views) {
+		this.views.forEach((view, monsterId) => {
 			const { x, z } = view.getPosition();
 			view.update(
 				deltaTime,
 				this.mapGen.getGroundHeight(x, z),
 				cameraPosition,
+				this.room.state.combatTimeS,
 			);
 			const monster = this.room.state.monsters.get(monsterId);
 			if (monster)
 				view.updateHealth(monster.life.current, monster.life.max);
-		}
+		});
 		this.damageNumbers.update(deltaTime);
 	}
 
 	private onDamage(events: MonsterDamageEvent[]) {
 		for (const event of events) {
 			const view = this.views.get(event.id);
+			view?.flashDamage();
 			const position = view
 				? view.getHeadWorldPosition()
 				: new BABYLON.Vector3(
@@ -97,36 +120,41 @@ export class MonsterRenderer {
 
 	private async addMonster(monster: Monster, monsterId: string) {
 		try {
-			const model = await this.assets.instantiate(
-				monster.kind as MonsterGLB,
-			);
-			const view = new MonsterView(
-				model.root,
-				model.animationGroups,
-				monster.isBoss,
-			);
-			if (this.removedWhileLoading.delete(monsterId)) {
-				view.dispose();
-				return;
-			}
-			view.snapTo(
-				monster.x,
-				monster.z,
-				this.mapGen.getGroundHeight(monster.x, monster.z),
-				monster.rotationY,
-			);
-			view.getMeshes().forEach((mesh) =>
-				this.mapGen.prepareRenderable(mesh),
-			);
-			view.attachNameplate(this.nameplateUi, monster.kind);
-			view.attachHealthBar(this.nameplateUi);
-			view.updateHealth(monster.life.current, monster.life.max);
-			view.setAttacking(monster.animState === 'attack');
-			this.views.set(monsterId, view);
+			await this.views.add(monsterId, async () => {
+				const model = await this.assets.instantiate(
+					models.monster[monster.kind as MonsterGLB],
+					monster.kind,
+				);
+				model.animationGroups.forEach((animation) => animation.stop());
+				const view = new MonsterView(
+					model.root,
+					model.animationGroups,
+					monster.kind,
+					monster.isBoss,
+					this.hitboxMaterial,
+				);
+				view.snapTo(
+					monster.x,
+					monster.z,
+					this.mapGen.getGroundHeight(monster.x, monster.z),
+					monster.rotationY,
+				);
+				view.getMeshes().forEach((mesh) =>
+					this.mapGen.prepareRenderable(mesh),
+				);
+				view.attachNameplate(this.nameplateUi, monster.kind);
+				view.attachHealthBar(this.nameplateUi);
+				view.updateHealth(monster.life.current, monster.life.max);
+				view.setAnimationState(monster.animState);
+				view.setHitboxVisible(this.hitboxesVisible);
+				return view;
+			});
+			const view = this.views.get(monsterId);
+			if (!view) return;
 			const callbacks = COLYSEUS.Callbacks.get(this.room);
 			callbacks.onChange(monster, () => {
 				view.setTarget(monster.x, monster.z, monster.rotationY);
-				view.setAttacking(monster.animState === 'attack');
+				view.setAnimationState(monster.animState);
 			});
 		} catch (error) {
 			console.error(`failed to render monster '${monster.kind}'`, error);
@@ -134,21 +162,14 @@ export class MonsterRenderer {
 	}
 
 	private removeMonster(monsterId: string) {
-		const view = this.views.get(monsterId);
-		if (!view) {
-			this.removedWhileLoading.add(monsterId);
-			return;
-		}
-		view.dispose();
-		this.views.delete(monsterId);
+		this.views.remove(monsterId);
 	}
 
 	dispose() {
-		this.views.forEach((view) => view.dispose());
-		this.views.clear();
-		this.removedWhileLoading.clear();
+		this.views.dispose();
 		this.damageNumbers.dispose();
 		this.assets.dispose();
+		this.hitboxMaterial.dispose();
 		this.nameplateUi.dispose();
 	}
 }

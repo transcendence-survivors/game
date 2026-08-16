@@ -5,9 +5,10 @@ import {
 	type WeaponModel,
 } from '../assets/models/weapons/weaponModels';
 import type { MapGenerator } from '../map/MapGenerator';
+import { ModelAssetLibrary } from '../assets/ModelAssetLibrary';
 
 export class CombatAssetLibrary {
-	private readonly containers = new Map<string, Promise<BABYLON.AssetContainer>>();
+	private readonly assets: ModelAssetLibrary;
 	private readonly scene: BABYLON.Scene;
 	private readonly map: MapGenerator;
 	private disposed = false;
@@ -15,17 +16,16 @@ export class CombatAssetLibrary {
 	constructor(scene: BABYLON.Scene, map: MapGenerator) {
 		this.scene = scene;
 		this.map = map;
+		this.assets = new ModelAssetLibrary(scene);
 	}
 
 	async instantiate(model: WeaponModel, name: string): Promise<BABYLON.TransformNode> {
 		if (this.disposed) throw new Error('weapon asset library is disposed');
 		let root: BABYLON.TransformNode;
 		try {
-			const container = await this.load(weaponModels[model].url);
-			const instance = container.instantiateModelsToScene(
-				(nodeName) => `${name}:${nodeName}`,
-			);
-			root = instance.rootNodes[0] as BABYLON.TransformNode;
+			root = (
+				await this.assets.instantiate(weaponModels[model].url, name)
+			).root;
 		} catch (error) {
 			console.error(`failed to load weapon model '${model}'`, error);
 			root = this.createFallback(model, name);
@@ -39,19 +39,7 @@ export class CombatAssetLibrary {
 
 	dispose(): void {
 		this.disposed = true;
-		this.containers.forEach((pending) =>
-			pending.then((container) => container.dispose()).catch(() => {}),
-		);
-		this.containers.clear();
-	}
-
-	private load(url: string): Promise<BABYLON.AssetContainer> {
-		let pending = this.containers.get(url);
-		if (!pending) {
-			pending = BABYLON.LoadAssetContainerAsync(url, this.scene);
-			this.containers.set(url, pending);
-		}
-		return pending;
+		this.assets.dispose();
 	}
 
 	private createFallback(model: WeaponModel, name: string): BABYLON.TransformNode {

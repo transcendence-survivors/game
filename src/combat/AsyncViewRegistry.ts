@@ -11,7 +11,13 @@ export class AsyncViewRegistry<TView extends DisposableView> {
 		if (this.disposed) return;
 		const token = {};
 		this.pending.set(id, token);
-		const view = await create();
+		let view: TView;
+		try {
+			view = await create();
+		} catch (error) {
+			if (this.pending.get(id) === token) this.pending.delete(id);
+			throw error;
+		}
 		if (this.disposed || this.pending.get(id) !== token) {
 			view.dispose();
 			return;
@@ -19,6 +25,10 @@ export class AsyncViewRegistry<TView extends DisposableView> {
 		this.pending.delete(id);
 		this.views.get(id)?.dispose();
 		this.views.set(id, view);
+	}
+
+	get(id: string): TView | undefined {
+		return this.views.get(id);
 	}
 
 	remove(id: string): void {

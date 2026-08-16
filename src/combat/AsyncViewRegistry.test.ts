@@ -36,4 +36,16 @@ describe('AsyncViewRegistry', () => {
 		expect(active.dispose).toHaveBeenCalledOnce();
 		expect(late.dispose).toHaveBeenCalledOnce();
 	});
+
+	test('clears a failed pending creation', async () => {
+		const registry = new AsyncViewRegistry<ReturnType<typeof view>>();
+		await expect(
+			registry.add('failed', async () => {
+				throw new Error('failed');
+			}),
+		).rejects.toThrow('failed');
+		const loaded = view();
+		await registry.add('failed', async () => loaded);
+		expect(registry.get('failed')).toBe(loaded);
+	});
 });
