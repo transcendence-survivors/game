@@ -9,6 +9,8 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"check:animations": "node scripts/optimize-glb-animations.mjs --check",
+		"optimize:animations": "node scripts/optimize-glb-animations.mjs --write",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."
 	},
@@ -17,12 +19,9 @@
 		"@babylonjs/core": "^9.4.1",
 		"@babylonjs/gui": "^9.4.1",
 		"@babylonjs/loaders": "^9.4.1",
-		"@colyseus/schema": "^4.0.26",
 		"@colyseus/sdk": "^0.17.43"
 	},
 	"devDependencies": {
-		"@babylonjs/inspector": "^9.4.1",
-		"@types/react": "^19",
 		"typescript": "~5.9.3",
 		"vitest": "^4.1.5"
 	}
