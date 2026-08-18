@@ -1,19 +1,40 @@
 import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
-import type { KeyBindings } from '../scenes/GameScene';
-import { guiImports } from '../assets/ui';
+import { createFullscreenUi, getGuiControls, guiImports } from '../assets/ui';
+import {
+	DEFAULT_KEY_BINDINGS,
+	KEY_ACTIONS,
+	type KeyBindings,
+} from './KeyBindings';
+
+interface SettingsControls {
+	fovSlider: GUI.Slider;
+	fovValue: GUI.TextBlock;
+	buttonBack: GUI.Button;
+	buttonReset: GUI.Button;
+}
+
+type KeyButtons = Record<keyof KeyBindings, GUI.Button>;
+
+const KEY_BUTTON_NAMES: { [K in keyof KeyBindings]: string } = {
+	forward: 'Key_Forward',
+	backward: 'Key_Backward',
+	right: 'Key_Right',
+	left: 'Key_Left',
+	jump: 'Key_Jump',
+};
 
 export class SettingsMenuRender {
-	private scene: Scene;
+	private readonly scene: Scene;
 	private advTex!: GUI.AdvancedDynamicTexture;
 	public readonly ready: Promise<void>;
-	private camera!: BABYLON.ArcRotateCamera;
-	private keybinds: KeyBindings;
+	private readonly camera: BABYLON.ArcRotateCamera;
+	private readonly keybinds: KeyBindings;
+	private keyButtons!: KeyButtons;
 	private awaitingBindFor: keyof KeyBindings | null = null;
 
 	constructor(
-		_engine: BABYLON.Engine,
 		scene: Scene,
 		camera: BABYLON.ArcRotateCamera,
 		keybinds: KeyBindings,
@@ -25,15 +46,8 @@ export class SettingsMenuRender {
 	}
 
 	async init() {
-		this.advTex = GUI.AdvancedDynamicTexture.CreateFullscreenUI(
-			'SettingsUi',
-			true,
-			this.scene,
-		);
+		this.advTex = createFullscreenUi('SettingsUi', this.scene);
 		await this.advTex.parseFromURLAsync(guiImports.settings);
-		this.advTex.idealWidth = 1920;
-		this.advTex.idealHeight = 1080;
-		this.advTex.renderAtIdealSize = true;
 		this.advTex.rootContainer.isVisible = false;
 		this.updatePointerEvents();
 		this.linkControls();
@@ -42,7 +56,6 @@ export class SettingsMenuRender {
 	dispose() {
 		document.removeEventListener('keydown', this.boundKeyDown);
 		this.advTex.dispose();
-		this.scene.dispose();
 	}
 
 	isOpen() {
@@ -60,48 +73,36 @@ export class SettingsMenuRender {
 	}
 
 	private updatePointerEvents() {
-		const layer = this.advTex.getContext().canvas as HTMLCanvasElement;
-		layer.style.pointerEvents = this.isOpen() ? 'auto' : 'none';
+		const layer = this.advTex.getContext().canvas;
+		if (layer instanceof HTMLCanvasElement)
+			layer.style.pointerEvents = this.isOpen() ? 'auto' : 'none';
 	}
 
 	private linkControls() {
-		const fovSlider = this.advTex.getControlByName(
-			'FovSlider',
-		) as GUI.Slider;
-		const fovValue = this.advTex.getControlByName(
-			'FovValue',
-		) as GUI.TextBlock;
+		const { fovSlider, fovValue, buttonBack, buttonReset } =
+			getGuiControls<SettingsControls>(this.advTex, {
+				fovSlider: 'FovSlider',
+				fovValue: 'FovValue',
+				buttonBack: 'ButtonBack',
+				buttonReset: 'ButtonReset',
+			});
+		this.keyButtons = getGuiControls<KeyButtons>(
+			this.advTex,
+			KEY_BUTTON_NAMES,
+		);
 
-		if (!fovSlider) return;
 		fovSlider.onValueChangedObservable.add((value) => {
 			const rounded = Math.round(value);
 			fovValue.text = rounded + '°';
 			this.camera.fov = BABYLON.Tools.ToRadians(rounded);
 		});
 
-		const buttonBack = this.advTex.getControlByName(
-			'ButtonBack',
-		) as GUI.Button;
-		buttonBack?.onPointerUpObservable.add(() => this.close());
+		buttonBack.onPointerUpObservable.add(() => this.close());
 
-		const buttonReset = this.advTex.getControlByName(
-			'ButtonReset',
-		) as GUI.Button;
-		buttonReset?.onPointerUpObservable.add(() => this.resetKeybinds());
+		buttonReset.onPointerUpObservable.add(() => this.resetKeybinds());
 
-		const keyButtons: Record<keyof KeyBindings, GUI.Button> = {
-			forward: this.advTex.getControlByName('Key_Forward') as GUI.Button,
-			backward: this.advTex.getControlByName(
-				'Key_Backward',
-			) as GUI.Button,
-			right: this.advTex.getControlByName('Key_Right') as GUI.Button,
-			left: this.advTex.getControlByName('Key_Left') as GUI.Button,
-			jump: this.advTex.getControlByName('Key_Jump') as GUI.Button,
-		};
-		for (const action of Object.keys(keyButtons) as (keyof KeyBindings)[]) {
-			const button = keyButtons[action];
-			if (!button) continue;
-
+		for (const action of KEY_ACTIONS) {
+			const button = this.keyButtons[action];
 			this.setButtonLabel(button, this.keybinds[action]);
 			button.onPointerUpObservable.add(() =>
 				this.beginRebind(action, button),
@@ -135,48 +136,34 @@ export class SettingsMenuRender {
 		this.keybinds[action] = key;
 		this.awaitingBindFor = null;
 
-		const controlName = `Key_${action.charAt(0).toUpperCase()}${action.slice(1)}`;
-		const button = this.advTex.getControlByName(controlName) as GUI.Button;
-		if (button) this.setButtonLabel(button, key);
+		this.setButtonLabel(this.keyButtons[action], key);
 	}
 
 	private setButtonLabel(button: GUI.Button, label: string) {
 		const textBlock =
-			button.textBlock ?? (button.children[0] as GUI.TextBlock);
+			button.textBlock ??
+			button.children.find((child) => child instanceof GUI.TextBlock);
 		if (textBlock)
 			textBlock.text = label === ' ' ? 'SPACE' : label.toUpperCase();
 	}
 
 	private resetKeybinds() {
-		const defaults: KeyBindings = {
-			forward: 'w',
-			backward: 's',
-			left: 'a',
-			right: 'd',
-			jump: ' ',
-		};
-		Object.assign(this.keybinds, defaults);
-		for (const action of Object.keys(defaults) as (keyof KeyBindings)[]) {
-			const controlName = `Key_${action.charAt(0).toUpperCase()}${action.slice(1)}`;
-			const button = this.advTex.getControlByName(
-				controlName,
-			) as GUI.Button;
-			if (button) this.setButtonLabel(button, defaults[action]);
-		}
+		Object.assign(this.keybinds, DEFAULT_KEY_BINDINGS);
+		for (const action of KEY_ACTIONS)
+			this.setButtonLabel(
+				this.keyButtons[action],
+				DEFAULT_KEY_BINDINGS[action],
+			);
 	}
 
 	private cancelRebind(action: keyof KeyBindings) {
 		this.awaitingBindFor = null;
 
-		const controlName = `Key_${action.charAt(0).toUpperCase()}${action.slice(1)}`;
-		const button = this.advTex.getControlByName(controlName) as GUI.Button;
-		if (button) this.setButtonLabel(button, this.keybinds[action]);
+		this.setButtonLabel(this.keyButtons[action], this.keybinds[action]);
 	}
 
 	private showRebindError(action: keyof KeyBindings) {
-		const controlName = `Key_${action.charAt(0).toUpperCase()}${action.slice(1)}`;
-		const button = this.advTex.getControlByName(controlName) as GUI.Button;
-		if (!button) return;
+		const button = this.keyButtons[action];
 
 		this.setButtonLabel(button, 'RESERVED');
 

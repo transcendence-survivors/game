@@ -13,20 +13,11 @@ export interface ManagedScene {
 
 export class SceneManager {
 	private static engine: Engine;
-	private static currentScene: ManagedScene;
-
-	constructor() {}
+	private static currentScene: ManagedScene | undefined;
+	private static transitionSequence = 0;
 
 	static init(engine: Engine) {
 		SceneManager.engine = engine;
-	}
-
-	static getEngine() {
-		return this.engine;
-	}
-
-	static getCurrentScene() {
-		return this.currentScene;
 	}
 
 	static toMainMenu() {
@@ -42,10 +33,16 @@ export class SceneManager {
 	}
 
 	static async set(newScene: ManagedScene) {
+		const transition = ++SceneManager.transitionSequence;
 		try {
 			await newScene.ready;
 		} catch (error) {
-			console.error('Scene failed to initialize');
+			if (transition === SceneManager.transitionSequence)
+				console.error('Scene failed to initialize', error);
+			newScene.dispose();
+			return;
+		}
+		if (transition !== SceneManager.transitionSequence) {
 			newScene.dispose();
 			return;
 		}
@@ -56,12 +53,14 @@ export class SceneManager {
 
 	static start() {
 		this.engine.runRenderLoop(() => {
-			this.currentScene.render();
+			this.currentScene?.render();
 		});
 	}
 
 	static stop() {
+		SceneManager.transitionSequence++;
 		this.engine.stopRenderLoop();
-		this.currentScene.dispose();
+		this.currentScene?.dispose();
+		this.currentScene = undefined;
 	}
 }
