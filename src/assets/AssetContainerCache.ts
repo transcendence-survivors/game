@@ -3,22 +3,27 @@ import {
 	type AssetContainer,
 	type Scene,
 } from '@babylonjs/core';
+import { getCachedPromise } from './PromiseCache';
+
+type AssetLoader = (url: string, scene: Scene) => Promise<AssetContainer>;
 
 export class AssetContainerCache {
 	private readonly containers = new Map<string, Promise<AssetContainer>>();
 	private readonly scene: Scene;
+	private readonly loadAsset: AssetLoader;
 
-	constructor(scene: Scene) {
+	constructor(
+		scene: Scene,
+		loadAsset: AssetLoader = LoadAssetContainerAsync,
+	) {
 		this.scene = scene;
+		this.loadAsset = loadAsset;
 	}
 
 	load(url: string): Promise<AssetContainer> {
-		let pending = this.containers.get(url);
-		if (!pending) {
-			pending = LoadAssetContainerAsync(url, this.scene);
-			this.containers.set(url, pending);
-		}
-		return pending;
+		return getCachedPromise(this.containers, url, () =>
+			this.loadAsset(url, this.scene),
+		);
 	}
 
 	dispose(): void {
