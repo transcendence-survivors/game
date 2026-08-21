@@ -8,18 +8,17 @@ export type WeaponModelTransform = Readonly<{
 	scale: number;
 }>;
 
-export const weaponModels: Record<
-	WeaponModel,
-	Readonly<{
-		url: string;
-		source: string;
-		dimensions: readonly [number, number, number];
-		origin: readonly [number, number, number];
-		longAxis: 'y' | 'z';
-		attachment: WeaponModelTransform | null;
-		combat: WeaponModelTransform | null;
-	}>
-> = {
+type WeaponModelConfig = Readonly<{
+	url: string;
+	source: string;
+	dimensions: readonly [number, number, number];
+	origin: readonly [number, number, number];
+	longAxis: 'y' | 'z';
+	attachment: WeaponModelTransform | null;
+	combat: WeaponModelTransform | null;
+}>;
+
+export const weaponModels = {
 	arrow: {
 		url: models.arrow,
 		source: 'Arrow by Quaternius',
@@ -27,7 +26,11 @@ export const weaponModels: Record<
 		origin: [0, 0, 0],
 		longAxis: 'z',
 		attachment: null,
-		combat: { position: [0, 0, 0], rotation: [Math.PI / 2, 0, 0], scale: 0.82 },
+		combat: {
+			position: [0, 0, 0],
+			rotation: [Math.PI / 2, 0, 0],
+			scale: 0.82,
+		},
 	},
 	axe: {
 		url: models.axe,
@@ -49,8 +52,6 @@ export const weaponModels: Record<
 		origin: [0, 0, 0],
 		longAxis: 'y',
 		attachment: {
-			// Le modele enfant est couche dans WeaponAttachmentRenderer : branches
-			// de gauche a droite et courbure dirigee vers +Z.
 			position: [0, 1.05, 0.95],
 			rotation: [0, 0, 0],
 			scale: 1,
@@ -77,12 +78,10 @@ export const weaponModels: Record<
 		origin: [0, 0, 0],
 		longAxis: 'z',
 		attachment: {
-			// +Z est l'avant autoritaire du joueur : le pommeau reste centre devant
-			// le torse pendant que la lame balaie autour de ce point fixe.
 			position: [0, 1.05, 0.9],
 			rotation: [0, 0, -Math.PI / 7],
 			scale: 1.875,
 		},
 		combat: null,
 	},
-};
+} as const satisfies Record<WeaponModel, WeaponModelConfig>;
