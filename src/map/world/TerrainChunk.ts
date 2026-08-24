@@ -1,185 +1,169 @@
 import { Mesh, VertexData } from '@babylonjs/core';
 import type { Scene, StandardMaterial } from '@babylonjs/core';
-import type {
-	World,
-	WorldColor,
-} from '@transcendence/game-shared';
+import { TERRAIN_SUBDIVISIONS_PER_CELL } from '@transcendence/game-shared';
+import type { World } from '@transcendence/game-shared';
+import { GROUND_TEXTURE_WORLD_SIZE } from './ProceduralGroundTexture';
+import {
+	generateTerrainSurface,
+	terrainSurfaceSegments,
+	type TerrainSurfaceData,
+} from './TerrainSurface';
 
-/** Sommet : position (x, y, z) + couleur. */
-type Vtx = readonly [number, number, number, WorldColor];
-
-function dark(c: WorldColor, k: number): WorldColor {
-	return { r: c.r * k, g: c.g * k, b: c.b * k };
+interface StaticTerrainGrid {
+	readonly vertexCount: number;
+	readonly localCoordinates: Float32Array;
+	readonly indices: Uint16Array | Uint32Array;
 }
 
-// Pentes / falaises = terre.
-const DIRT: WorldColor = { r: 0.4, g: 0.29, b: 0.19 };
-const DIRT_DARK = dark(DIRT, 0.7);
+const staticGridCache = new Map<string, StaticTerrainGrid>();
 
-// Arêtes d'une cellule : normale (nx, nz) + 2 extrémités (en unités de CELL).
-// Sert aux murs (falaises) ET aux faces latérales de rampe.
-const EDGES: ReadonlyArray<
-	readonly [number, number, number, number, number, number]
-> = [
-	[0, -1, 0, 0, 1, 0],
-	[0, 1, 0, 1, 1, 1],
-	[-1, 0, 0, 0, 0, 1],
-	[1, 0, 1, 0, 1, 1],
-];
+interface TerrainGeometryBuffers {
+	readonly positions: Float32Array;
+	readonly normals: Float32Array;
+	readonly uvs: Float32Array;
+}
 
-/**
- * Construit le mesh d'un chunk : falaises (murs de terre d'un palier), plateaux
- * d'herbe et pentes d'herbe. Le winding est auto-corrigé via la normale visée.
- */
+const terrainGeometryPools = new Map<number, TerrainGeometryBuffers[]>();
+const MAX_POOLED_TERRAIN_GEOMETRIES = 4;
+
+function acquireTerrainGeometryBuffers(
+	vertexCount: number,
+): TerrainGeometryBuffers {
+	const pooled = terrainGeometryPools.get(vertexCount)?.pop();
+	if (pooled) return pooled;
+	return {
+		positions: new Float32Array(vertexCount * 3),
+		normals: new Float32Array(vertexCount * 3),
+		uvs: new Float32Array(vertexCount * 2),
+	};
+}
+
+function releaseTerrainGeometryBuffers(
+	vertexCount: number,
+	buffers: TerrainGeometryBuffers,
+): void {
+	let pooled = terrainGeometryPools.get(vertexCount);
+	if (!pooled) {
+		pooled = [];
+		terrainGeometryPools.set(vertexCount, pooled);
+	}
+	if (pooled.length < MAX_POOLED_TERRAIN_GEOMETRIES) pooled.push(buffers);
+}
+
+function getStaticTerrainGrid(
+	segments: number,
+	spacing: number,
+): StaticTerrainGrid {
+	const key = `${segments}:${spacing}`;
+	const cached = staticGridCache.get(key);
+	if (cached) return cached;
+
+	const row = segments + 1;
+	const vertexCount = row * row;
+	const localCoordinates = new Float32Array(vertexCount * 2);
+	for (let j = 0; j <= segments; j++)
+		for (let i = 0; i <= segments; i++) {
+			const index = (j * row + i) * 2;
+			localCoordinates[index] = i * spacing;
+			localCoordinates[index + 1] = j * spacing;
+		}
+
+	const indexCount = segments * segments * 6;
+	const indices =
+		vertexCount > 65_535
+			? new Uint32Array(indexCount)
+			: new Uint16Array(indexCount);
+	let offset = 0;
+	for (let j = 0; j < segments; j++)
+		for (let i = 0; i < segments; i++) {
+			const a = j * row + i;
+			const b = a + 1;
+			const d = a + row;
+			const c = d + 1;
+			// Counter-clockwise when viewed from above.
+			indices[offset++] = a;
+			indices[offset++] = d;
+			indices[offset++] = b;
+			indices[offset++] = b;
+			indices[offset++] = d;
+			indices[offset++] = c;
+		}
+
+	const grid = { vertexCount, localCoordinates, indices };
+	staticGridCache.set(key, grid);
+	return grid;
+}
+
+/** Builds a shared, continuously sampled terrain surface for one chunk. */
 export function buildChunkMesh(
 	scene: Scene,
 	world: World,
 	chunkX: number,
 	chunkZ: number,
 	mat: StandardMaterial,
-	flat: boolean,
+	surfaceData: TerrainSurfaceData = generateTerrainSurface(
+		world,
+		chunkX,
+		chunkZ,
+	),
 ): Mesh {
-	const CELL = world.CELL;
-	const N = world.N;
-	const STEP = world.STEP;
-	const pos: number[] = [];
-	const idx: number[] = [];
-	const col: number[] = [];
-
-	const vtx = (p: Vtx): number => {
-		const i = pos.length / 3;
-		pos.push(p[0], p[1], p[2]);
-		const c = p[3];
-		col.push(c.r, c.g, c.b, 1);
-		return i;
+	const cellSize = world.CELL;
+	const segments = terrainSurfaceSegments(world);
+	if (surfaceData.segments !== segments)
+		throw new Error('Terrain surface resolution does not match the world');
+	const spacing = cellSize / TERRAIN_SUBDIVISIONS_PER_CELL;
+	const originX = chunkX * world.N * cellSize;
+	const originZ = chunkZ * world.N * cellSize;
+	const grid = getStaticTerrainGrid(segments, spacing);
+	const buffers = acquireTerrainGeometryBuffers(grid.vertexCount);
+	const { positions, normals, uvs } = buffers;
+	let mesh: Mesh | null = null;
+	let buffersReleased = false;
+	const releaseBuffers = (): void => {
+		if (buffersReleased) return;
+		buffersReleased = true;
+		releaseTerrainGeometryBuffers(grid.vertexCount, buffers);
 	};
-	const tri = (
-		p1: Vtx,
-		p2: Vtx,
-		p3: Vtx,
-		nx: number,
-		ny: number,
-		nz: number,
-	): void => {
-		const ax = p2[0] - p1[0];
-		const ay = p2[1] - p1[1];
-		const az = p2[2] - p1[2];
-		const bx = p3[0] - p1[0];
-		const by = p3[1] - p1[1];
-		const bz = p3[2] - p1[2];
-		const cx = by * az - bz * ay;
-		const cy = bz * ax - bx * az;
-		const cz = bx * ay - by * ax;
-		if (cx * nx + cy * ny + cz * nz >= 0)
-			idx.push(vtx(p1), vtx(p2), vtx(p3));
-		else idx.push(vtx(p1), vtx(p3), vtx(p2));
-	};
-	const quad = (
-		p1: Vtx,
-		p2: Vtx,
-		p3: Vtx,
-		p4: Vtx,
-		nx: number,
-		ny: number,
-		nz: number,
-	): void => {
-		tri(p1, p2, p3, nx, ny, nz);
-		tri(p1, p3, p4, nx, ny, nz);
-	};
-
-	for (let j = 0; j < N; j++) {
-		for (let i = 0; i < N; i++) {
-			const gx = chunkX * N + i;
-			const gz = chunkZ * N + j;
-			const T = world.tier(gx, gz);
-			const yT = T * STEP;
-			const x = i * CELL;
-			const z = j * CELL;
-			const c = world.topColor(T);
-			const d = world.rampDir(gx, gz);
-
-			if (d) {
-				// PENTE (herbe) + 2 faces latérales (terre).
-				const yH = yT + STEP;
-				const dx = d[0];
-				const dz = d[1];
-				const P = (ux: number, uz: number): Vtx => [
-					x + ux * CELL,
-					(ux - 0.5) * dx + (uz - 0.5) * dz > 0 ? yH : yT,
-					z + uz * CELL,
-					c,
-				];
-				quad(P(0, 0), P(1, 0), P(1, 1), P(0, 1), 0, 1, 0);
-				for (const [nx, nz, ax, az, bx, bz] of EDGES) {
-					if (nx * dx + nz * dz !== 0) continue; // arêtes parallèles à la pente
-					const aHi = (ax - 0.5) * dx + (az - 0.5) * dz > 0;
-					const hx = aHi ? ax : bx;
-					const hz = aHi ? az : bz;
-					const lx = aHi ? bx : ax;
-					const lz = aHi ? bz : az;
-					tri(
-						[x + lx * CELL, yT, z + lz * CELL, DIRT],
-						[x + hx * CELL, yH, z + hz * CELL, DIRT],
-						[x + hx * CELL, yT, z + hz * CELL, DIRT],
-						nx,
-						0,
-						nz,
-					);
-				}
-			} else {
-				// PLATEAU plat (herbe).
-				quad(
-					[x, yT, z, c],
-					[x + CELL, yT, z, c],
-					[x + CELL, yT, z + CELL, c],
-					[x, yT, z + CELL, c],
-					0,
-					1,
-					0,
-				);
-			}
-
-			// FALAISES (terre) vers les voisins plus bas.
-			for (const [nx, nz, ax, az, bx, bz] of EDGES) {
-				const tn = world.tier(gx + nx, gz + nz);
-				if (tn >= T) continue;
-				const yL = tn * STEP;
-				quad(
-					[x + ax * CELL, yL, z + az * CELL, DIRT_DARK],
-					[x + bx * CELL, yL, z + bz * CELL, DIRT_DARK],
-					[x + bx * CELL, yT, z + bz * CELL, DIRT],
-					[x + ax * CELL, yT, z + az * CELL, DIRT],
-					nx,
-					0,
-					nz,
-				);
-			}
+	try {
+		const textureOffset = GROUND_TEXTURE_WORLD_SIZE * 0.5;
+		for (let index = 0; index < grid.vertexCount; index++) {
+			const localIndex = index * 2;
+			const positionIndex = index * 3;
+			const x = grid.localCoordinates[localIndex]!;
+			const z = grid.localCoordinates[localIndex + 1]!;
+			positions[positionIndex] = x;
+			positions[positionIndex + 1] = surfaceData.heights[index]!;
+			positions[positionIndex + 2] = z;
+			normals[positionIndex] = surfaceData.normals[positionIndex]!;
+			normals[positionIndex + 1] = surfaceData.normals[positionIndex + 1]!;
+			normals[positionIndex + 2] = surfaceData.normals[positionIndex + 2]!;
+			uvs[localIndex] =
+				(originX + x + textureOffset) / GROUND_TEXTURE_WORLD_SIZE;
+			uvs[localIndex + 1] =
+				(originZ + z + textureOffset) / GROUND_TEXTURE_WORLD_SIZE;
 		}
-	}
 
-	const normals: number[] = [];
-	VertexData.ComputeNormals(pos, idx, normals);
-	const vd = new VertexData();
-	vd.positions = pos;
-	vd.indices = idx;
-	vd.normals = normals;
-	vd.colors = col;
-	const mesh = new Mesh(`chunk_${chunkX}_${chunkZ}`, scene);
-	vd.applyToMesh(mesh);
-	mesh.position.set(chunkX * N * CELL, 0, chunkZ * N * CELL);
-	if (flat) mesh.convertToFlatShadedMesh();
-	mesh.material = mat;
-	mesh.isPickable = false;
-	// PAS de `doNotSyncBoundingInfo` ici : la boîte englobante est calculée par
-	// `applyToMesh` en espace LOCAL, donc AVANT la translation du chunk. La
-	// désactiver empêche `_afterComputeWorldMatrix` de la réévaluer et tous les
-	// chunks se retrouvent avec la même boîte, posée sur l'origine du monde —
-	// le frustum culling les fait alors disparaître ensemble dès qu'on ne
-	// regarde plus vers l'origine. Le `freezeWorldMatrix` ci-dessous déclenche
-	// l'unique recalcul nécessaire, puis fige la matrice : les frames suivantes
-	// sortent de `computeWorldMatrix` sans rien resynchroniser.
-	mesh.freezeWorldMatrix();
-	return mesh;
+		mesh = new Mesh(`chunk_${chunkX}_${chunkZ}`, scene);
+		const vd = new VertexData();
+		vd.positions = positions;
+		vd.indices = grid.indices;
+		vd.normals = normals;
+		vd.uvs = uvs;
+		vd.applyToMesh(mesh);
+		mesh.onDisposeObservable.addOnce(releaseBuffers);
+		// Render the upper side from above with Babylon's normal front-face winding.
+		mesh.sideOrientation = Mesh.FRONTSIDE;
+		mesh.position.set(originX, 0, originZ);
+		mesh.material = mat;
+		mesh.isPickable = false;
+		// Keep the translated bounding box for frustum culling before freezing it.
+		mesh.freezeWorldMatrix();
+		return mesh;
+	} catch (error) {
+		releaseBuffers();
+		mesh?.dispose();
+		throw error;
+	}
 }
 
 export class TerrainChunk {
@@ -191,9 +175,9 @@ export class TerrainChunk {
 		cx: number,
 		cz: number,
 		mat: StandardMaterial,
-		flat: boolean,
+		surfaceData?: TerrainSurfaceData,
 	) {
-		this.mesh = buildChunkMesh(scene, world, cx, cz, mat, flat);
+		this.mesh = buildChunkMesh(scene, world, cx, cz, mat, surfaceData);
 	}
 
 	dispose(): void {
