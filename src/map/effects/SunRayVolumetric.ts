@@ -8,9 +8,14 @@ import {
 } from '@babylonjs/core';
 import type { Color3, Scene, Vector3 } from '@babylonjs/core';
 import { Vector3 as Vec3 } from '@babylonjs/core';
-import { sceneDepthTexture } from './SceneDepthTexture';
+import {
+	bindCameraDepthUniforms,
+	CAMERA_DEPTH_GLSL,
+	DEPTH_UNIFORMS,
+} from './SceneDepthTexture';
+import { EFFECT_RENDER_RATIO } from './RadialLightingPostProcess';
 
-export interface SunRayOptions {
+interface SunRayOptions {
 	readonly color: Color3;
 	readonly strikeY: number;
 	readonly radius: number;
@@ -22,16 +27,11 @@ const FRAGMENT_SHADER = `
 precision highp float;
 varying vec2 vUV;
 uniform sampler2D textureSampler;       // scene colour
-uniform highp sampler2D depthSampler;   // scene depth (non-linear hardware depth)
-uniform vec2 uTanFov;                   // tan(fov/2)*aspect, tan(fov/2)
-uniform vec3 uPlanes;                   // near, far, isNDCHalfZRange(1=WebGPU)
-uniform mat4 uInvView;                  // camera world matrix (= inverse view)
-uniform vec3 uCamPos;                   // camera world position
+${CAMERA_DEPTH_GLSL}
 uniform vec3 uBeamCenter;               // (cx, strikeY, cz)
 uniform vec4 uBeamShape;                // (radius, height, intensity, time)
 uniform vec3 uColor;
 
-// Cheap 3D value noise for drifting in-shaft dust.
 float hash3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vnoise(vec3 x){
 	vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -43,24 +43,13 @@ float vnoise(vec3 x){
 
 void main(void){
 	vec4 scene = texture2D(textureSampler, vUV);
-	vec2 ndc = vUV * 2.0 - 1.0;
-	vec3 rayV = vec3(ndc.x * uTanFov.x, ndc.y * uTanFov.y, 1.0); // camera-space ray
-	vec3 D = normalize((uInvView * vec4(rayV, 0.0)).xyz);         // world ray dir
+	vec3 rayV;
+	vec3 D = cameraWorldRay(vUV, rayV);
 	vec3 O = uCamPos;
 
-	// Distance at which this pixel's ray hits solid geometry (sky → far plane).
 	float dpt = texture2D(depthSampler, vUV).r;
-	float maxDist;
-	if (dpt < 0.999999) {
-		float z;
-		if (uPlanes.z > 0.5) { z = (uPlanes.x * uPlanes.y) / (uPlanes.y - dpt * (uPlanes.y - uPlanes.x)); }
-		else { float zn = dpt * 2.0 - 1.0; z = (2.0 * uPlanes.x * uPlanes.y) / (uPlanes.y + uPlanes.x - zn * (uPlanes.y - uPlanes.x)); }
-		maxDist = z * length(rayV);
-	} else {
-		maxDist = uPlanes.y;
-	}
+	float maxDist = sceneDepthDistance(dpt, rayV);
 
-	// Intersect the ray with the infinite vertical cylinder (axis Y, centre xz, radius R).
 	float R = uBeamShape.x;
 	vec2 oc = O.xz - uBeamCenter.xz;
 	float a = dot(D.xz, D.xz);
@@ -71,7 +60,6 @@ void main(void){
 	float sq = sqrt(disc);
 	float t0 = max((-b - sq) / (2.0 * a), 0.0);
 	float t1 = min((-b + sq) / (2.0 * a), maxDist);
-	// Clamp to the shaft's vertical span [yMin, yMax].
 	float yMin = uBeamCenter.y;
 	float yMax = uBeamCenter.y + uBeamShape.y;
 	if (abs(D.y) > 1e-4) {
@@ -84,11 +72,7 @@ void main(void){
 	}
 	if (t1 <= t0) { gl_FragColor = scene; return; }
 
-	// March the visible segment, integrating dusty density. STEPS halved and a
-	// single noise octave (vs. 2 blended) vs. the original: this loop runs per
-	// pixel inside the beam's screen projection, so its cost dominates the
-	// whole post-process — each vnoise() call alone is 8 hash3() evaluations.
-	const int STEPS = 12;
+	const int STEPS = 8;
 	float stepLen = (t1 - t0) / float(STEPS);
 	float time = uBeamShape.w;
 	float accum = 0.0;
@@ -151,44 +135,20 @@ export class SunRayVolumetric {
 		this.post = new PostProcess(
 			'sunRayVol',
 			'sunRayVol',
-			[
-				'uTanFov',
-				'uPlanes',
-				'uInvView',
-				'uCamPos',
-				'uBeamCenter',
-				'uBeamShape',
-				'uColor',
-			],
+			[...DEPTH_UNIFORMS, 'uBeamCenter', 'uBeamShape', 'uColor'],
 			['depthSampler'],
-			1.0,
+			EFFECT_RENDER_RATIO,
 			scene.activeCamera,
 		);
 		this.post.onApplyObservable.add((effect) => {
 			const cam = this.scene.activeCamera;
-			if (cam === null) {
-				return;
-			}
-			const depth = sceneDepthTexture(
+			if (cam === null) return;
+			bindCameraDepthUniforms(
+				effect,
 				this.scene,
 				cam,
 				'sunray-scene-depth',
 			);
-			if (depth !== null) {
-				effect._bindTexture('depthSampler', depth);
-			}
-			const engine = this.scene.getEngine();
-			const tan = Math.tan(cam.fov / 2);
-			effect.setFloat2('uTanFov', tan * engine.getAspectRatio(cam), tan);
-			effect.setFloat3(
-				'uPlanes',
-				cam.minZ,
-				cam.maxZ,
-				engine.isNDCHalfZRange ? 1 : 0,
-			);
-			effect.setMatrix('uInvView', cam.getWorldMatrix()); // world matrix = inverse view
-			const p = cam.globalPosition;
-			effect.setFloat3('uCamPos', p.x, p.y, p.z);
 			effect.setFloat3(
 				'uBeamCenter',
 				this.center.x,
@@ -207,7 +167,7 @@ export class SunRayVolumetric {
 		});
 
 		const r = this.radius;
-		const DUST_CAPACITY = 300;
+		const DUST_CAPACITY = 160;
 		this.dust = GPUParticleSystem.IsSupported
 			? new GPUParticleSystem(
 					'sun-ray-dust',
@@ -226,7 +186,7 @@ export class SunRayVolumetric {
 		this.dust.maxSize = 1.0;
 		this.dust.minLifeTime = 4.0;
 		this.dust.maxLifeTime = 9.0;
-		this.dust.emitRate = 70;
+		this.dust.emitRate = 40;
 		this.dust.blendMode = ParticleSystem.BLENDMODE_ADD;
 		this.dust.gravity = new Vec3(0, 0.6, 0);
 		this.dust.direction1 = new Vec3(-0.15, 0.6, -0.15);

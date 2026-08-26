@@ -1,6 +1,10 @@
 import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
-import { World, ACCESS_RADIUS } from '@transcendence/game-shared';
+import {
+	World,
+	ACCESS_RADIUS,
+	CHUNK_DISPLAY_RADIUS as SHARED_CHUNK_DISPLAY_RADIUS,
+} from '@transcendence/game-shared';
 import { ChunkManager } from './world/ChunkManager';
 import { SunRayVolumetric } from './effects/SunRayVolumetric';
 import { RadialLightingPostProcess } from './effects/RadialLightingPostProcess';
@@ -8,23 +12,30 @@ import {
 	PlayerAuraPlugin,
 	type AuraInstance,
 } from './effects/PlayerAuraPlugin';
+import { createProceduralGroundTexture } from './world/ProceduralGroundTexture';
+import { WorldGenerationClient } from './world/WorldGenerationClient';
 
 export class MapGenerator {
 	readonly ZONE_RADIUS = ACCESS_RADIUS;
+	readonly CHUNK_DISPLAY_RADIUS = SHARED_CHUNK_DISPLAY_RADIUS;
 
-	private scene: Scene;
-	private world!: World;
+	private readonly scene: Scene;
+	private readonly world: World;
+	private readonly generation: WorldGenerationClient;
 	private terrainMaterial!: BABYLON.StandardMaterial;
+	private terrainTexture!: BABYLON.RawTexture;
+	private terrainLight!: BABYLON.HemisphericLight;
 	private auraPlugin!: PlayerAuraPlugin;
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
 	private radialLighting!: RadialLightingPostProcess;
 	private rayPos!: BABYLON.Vector3;
-	private zoneBoundary!: BABYLON.Mesh;
+	private raySynchronized = false;
 
 	constructor(scene: Scene, seed: number) {
 		this.scene = scene;
 		this.world = new World(seed);
+		this.generation = new WorldGenerationClient();
 		this.init();
 	}
 
@@ -39,20 +50,27 @@ export class MapGenerator {
 			'terrain',
 			this.scene,
 		);
+		this.terrainTexture = createProceduralGroundTexture(
+			this.scene,
+			this.world.seed,
+		);
+		this.terrainMaterial.diffuseTexture = this.terrainTexture;
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
 		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
-		this.terrainMaterial.disableLighting = true;
-		// Sans Light Babylon, StandardMaterial laisse sa contribution diffuse a
-		// zero. Le blanc emissif sert ici uniquement d'albedo non eclaire : il est
-		// multiplie par les couleurs de sommets du terrain. Le post-process radial
-		// recoit ainsi les vraies teintes herbe/roche/neige et reste l'unique etape
-		// qui calcule leur luminosite dans le cylindre.
-		this.terrainMaterial.emissiveColor = BABYLON.Color3.White();
-		// Auras des joueurs dessinées à même le terrain (voir PlayerAuraPlugin) :
-		// elles épousent le relief car calculées par pixel. Le matériau n'est
-		// donc PAS figé — ses uniforms d'aura doivent être rebindés chaque frame.
-		// `blockMaterialDirtyMechanism` (fin d'init) empêche malgré tout toute
-		// recompilation : on garde le bind par frame, sans le scan « dirty ».
+		this.terrainMaterial.disableLighting = false;
+		this.terrainMaterial.emissiveColor = new BABYLON.Color3(
+			0.08,
+			0.1,
+			0.05,
+		);
+		this.terrainLight = new BABYLON.HemisphericLight(
+			'terrainSun',
+			new BABYLON.Vector3(-0.45, 1, 0.25),
+			this.scene,
+		);
+		this.terrainLight.diffuse = BABYLON.Color3.FromHexString('#fff1c7');
+		this.terrainLight.groundColor = BABYLON.Color3.FromHexString('#26351e');
+		this.terrainLight.intensity = 0.9;
 		this.auraPlugin = new PlayerAuraPlugin(this.terrainMaterial);
 
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
@@ -63,15 +81,19 @@ export class MapGenerator {
 			this.scene,
 			this.world,
 			this.terrainMaterial,
-			{ viewDistance: 4, flat: true },
+			3,
+			performance.now.bind(performance),
+			this.generation,
+			this.CHUNK_DISPLAY_RADIUS,
 		);
 		this.chunkManager.update(BABYLON.Vector3.Zero());
 		this.radialLighting = new RadialLightingPostProcess(this.scene, {
 			innerRadius: this.ZONE_RADIUS * 0.45,
 			outerRadius: this.ZONE_RADIUS,
-			penumbra: 0.22,
+			// The first cylinder is the hard visibility boundary. The radial
+			// curve must reach full opacity exactly at its radius.
+			penumbra: 0,
 			lightColor: beamColor,
-			quality: 'high',
 		});
 
 		this.sunRay = new SunRayVolumetric(this.scene, {
@@ -82,82 +104,25 @@ export class MapGenerator {
 			intensity: 1.0,
 		});
 
-		// FXAA en dernière passe (créé après le shaft, donc appliqué après lui) :
-		// lisse les bords géométriques crénelés, compatible avec la chaîne de
-		// post-process du rayon contrairement au MSAA du framebuffer principal.
 		if (this.scene.activeCamera) {
 			new BABYLON.FxaaPostProcess('fxaa', 1.0, this.scene.activeCamera);
 		}
 
-		this.createZoneBoundary(strikeY);
-
-		// Lumières et matériaux de la scène sont figés une fois pour toutes ici :
-		// plus besoin du scan qui remarque tous les matériaux "dirty" au moindre
-		// changement de lumière/scène.
 		this.scene.blockMaterialDirtyMechanism = true;
 	}
 
-	/**
-	 * Frontière visible de la zone accessible : un rideau cylindrique lumineux au
-	 * rayon `ZONE_RADIUS`, translucide et fondu vers le haut, ouvert (sans faces
-	 * haut/bas). Il suit le rayon (voir {@link syncFromRoom}) et matérialise la
-	 * limite où commencent les ténèbres, même quand le relief masque le sol.
-	 */
-	private createZoneBoundary(baseY: number) {
-		const wall = BABYLON.MeshBuilder.CreateCylinder(
-			'zoneBoundary',
-			{
-				diameter: this.ZONE_RADIUS * 2,
-				height: 140,
-				tessellation: 96,
-				cap: BABYLON.Mesh.NO_CAP,
-			},
-			this.scene,
-		);
-
-		// Dégradé d'opacité vertical : dense au sol, s'efface vers le haut.
-		const grad = new BABYLON.DynamicTexture(
-			'zoneBoundaryGrad',
-			{ width: 4, height: 128 },
-			this.scene,
-			false,
-		);
-		const ctx = grad.getContext() as unknown as CanvasRenderingContext2D;
-		const g = ctx.createLinearGradient(0, 128, 0, 0);
-		g.addColorStop(0, 'rgba(255,255,255,0.85)');
-		g.addColorStop(1, 'rgba(255,255,255,0)');
-		ctx.fillStyle = g;
-		ctx.fillRect(0, 0, 4, 128);
-		grad.update();
-		grad.hasAlpha = true;
-
-		const mat = new BABYLON.StandardMaterial('zoneBoundaryMat', this.scene);
-		mat.disableLighting = true;
-		mat.emissiveColor = new BABYLON.Color3(1.0, 0.55, 0.25);
-		mat.diffuseColor = new BABYLON.Color3(0, 0, 0);
-		mat.opacityTexture = grad;
-		mat.backFaceCulling = false; // visible depuis l'intérieur du disque
-		mat.alphaMode = BABYLON.Constants.ALPHA_ADD; // lueur additive
-		wall.material = mat;
-
-		wall.isPickable = false;
-		wall.doNotSyncBoundingInfo = true;
-		wall.alwaysSelectAsActiveMesh = true; // grand + toujours pertinent
-		wall.position.set(0, baseY, 0);
-		this.zoneBoundary = wall;
-	}
-
-	/**
-	 * Recale le rayon sur la position autoritative reçue du serveur : déplace le
-	 * halo volumétrique, la lumière et la frontière de zone, mémorise le centre
-	 * pour le clamp, et déclenche le streaming des chunks autour du rayon (le
-	 * joueur reste borné dans ce disque, donc toujours dans la zone chargée).
-	 */
 	syncFromRoom(rayX: number, rayY: number, rayZ: number) {
-		this.rayPos.set(rayX, rayY, rayZ);
-		this.sunRay.setStrike(rayX, rayY, rayZ);
-		this.radialLighting.setRayPosition(rayX, rayY, rayZ);
-		this.zoneBoundary.position.set(rayX, rayY, rayZ);
+		if (
+			!this.raySynchronized ||
+			rayX !== this.rayPos.x ||
+			rayY !== this.rayPos.y ||
+			rayZ !== this.rayPos.z
+		) {
+			this.raySynchronized = true;
+			this.rayPos.set(rayX, rayY, rayZ);
+			this.sunRay.setStrike(rayX, rayY, rayZ);
+			this.radialLighting.setRayPosition(rayX, rayY, rayZ);
+		}
 		this.chunkManager.update(this.rayPos);
 	}
 
@@ -173,8 +138,22 @@ export class MapGenerator {
 		return this.world;
 	}
 
-	prepareRenderable(mesh: BABYLON.AbstractMesh) {
-		for (const child of [mesh, ...mesh.getChildMeshes()]) {
+	/** Center shared by the access cylinder and chunk visibility distance. */
+	getZoneCenter(): BABYLON.Vector3 {
+		return this.rayPos;
+	}
+
+	getGenerationClient(): WorldGenerationClient {
+		return this.generation;
+	}
+
+	prepareRenderable(root: BABYLON.TransformNode, includeRoot = true) {
+		const children = root.getChildMeshes();
+		const first =
+			includeRoot && root instanceof BABYLON.AbstractMesh ? -1 : 0;
+		for (let index = first; index < children.length; index++) {
+			const child =
+				index < 0 ? (root as BABYLON.AbstractMesh) : children[index];
 			const material = child.material;
 			if (material instanceof BABYLON.StandardMaterial)
 				material.disableLighting = true;
@@ -183,10 +162,12 @@ export class MapGenerator {
 	}
 
 	dispose() {
+		this.chunkManager.dispose();
+		this.generation.dispose();
 		this.radialLighting.dispose();
 		this.sunRay.dispose();
+		this.terrainLight.dispose();
+		this.terrainTexture.dispose();
 		this.terrainMaterial.dispose();
-		this.zoneBoundary.material?.dispose();
-		this.zoneBoundary.dispose();
 	}
 }
