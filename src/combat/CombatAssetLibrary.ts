@@ -13,7 +13,10 @@ export class CombatAssetLibrary {
 	private readonly map: MapGenerator;
 	private disposed = false;
 
-	constructor(scene: BABYLON.Scene, map: MapGenerator) {
+	constructor(
+		scene: BABYLON.Scene,
+		map: MapGenerator,
+	) {
 		this.scene = scene;
 		this.map = map;
 		this.assets = new ModelAssetLibrary(scene);
@@ -30,10 +33,8 @@ export class CombatAssetLibrary {
 			console.error(`failed to load weapon model '${model}'`, error);
 			root = this.createFallback(model, name);
 		}
-		root.getChildMeshes().forEach((mesh) => {
-			this.map.prepareRenderable(mesh);
-			mesh.isPickable = false;
-		});
+		this.map.prepareRenderable(root, false);
+		root.getChildMeshes().forEach((mesh) => (mesh.isPickable = false));
 		return root;
 	}
 

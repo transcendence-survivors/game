@@ -1,4 +1,4 @@
-export interface DisposableView {
+interface DisposableView {
 	dispose(): void;
 }
 

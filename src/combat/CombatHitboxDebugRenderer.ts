@@ -1,9 +1,10 @@
 import * as BABYLON from '@babylonjs/core';
-import type { CombatEntity, GameState } from '../../../shared-package';
+import type { CombatEntity, GameState } from '@transcendence/game-shared';
 import {
 	COMBAT_HITBOX_RENDERING_GROUP,
 	preserveWorldDepthForDebug,
 } from './DebugRenderingGroups';
+import { configureDebugMesh, createDebugMaterial } from './DebugMaterial';
 
 export class CombatHitboxDebugRenderer {
 	private readonly scene: BABYLON.Scene;
@@ -18,11 +19,13 @@ export class CombatHitboxDebugRenderer {
 		this.scene = scene;
 		this.state = state;
 		preserveWorldDepthForDebug(scene);
-		this.weaponMaterial = this.material(
+		this.weaponMaterial = createDebugMaterial(
+			scene,
 			'weaponHitbox3d',
 			new BABYLON.Color3(1, 0.75, 0.05),
 		);
-		this.auraMaterial = this.material(
+		this.auraMaterial = createDebugMaterial(
+			scene,
 			'auraHitbox3d',
 			new BABYLON.Color3(0.05, 0.9, 1),
 		);
@@ -40,9 +43,7 @@ export class CombatHitboxDebugRenderer {
 
 	update() {
 		if (!this.visible) return;
-		const alive = new Set<string>();
 		this.state.combatEntities.forEach((entity, id) => {
-			alive.add(id);
 			let mesh = this.meshes.get(id);
 			if (!mesh) {
 				mesh = this.createEntityMesh(entity, id);
@@ -51,12 +52,14 @@ export class CombatHitboxDebugRenderer {
 			mesh.position.set(entity.x, entity.y, entity.z);
 			mesh.rotation.y = entity.rotationY;
 		});
-		this.removeMissing(this.meshes, alive);
+		for (const [id, mesh] of this.meshes)
+			if (!this.state.combatEntities.has(id)) {
+				mesh.dispose();
+				this.meshes.delete(id);
+			}
 
-		const auraAlive = new Set<string>();
 		this.state.players.forEach((player, id) => {
 			if (player.aura.radius <= 0 || player.aura.height <= 0) return;
-			auraAlive.add(id);
 			let mesh = this.auraMeshes.get(id);
 			if (!mesh) {
 				mesh = BABYLON.MeshBuilder.CreateCylinder(
@@ -68,7 +71,7 @@ export class CombatHitboxDebugRenderer {
 					},
 					this.scene,
 				);
-				this.prepare(mesh, this.auraMaterial);
+				this.configure(mesh, this.auraMaterial);
 				this.auraMeshes.set(id, mesh);
 			}
 			mesh.position.set(
@@ -82,7 +85,13 @@ export class CombatHitboxDebugRenderer {
 				player.aura.radius,
 			);
 		});
-		this.removeMissing(this.auraMeshes, auraAlive);
+		for (const [id, mesh] of this.auraMeshes) {
+			const aura = this.state.players.get(id)?.aura;
+			if (!aura || aura.radius <= 0 || aura.height <= 0) {
+				mesh.dispose();
+				this.auraMeshes.delete(id);
+			}
+		}
 	}
 
 	dispose() {
@@ -136,7 +145,7 @@ export class CombatHitboxDebugRenderer {
 					this.scene,
 				);
 		}
-		this.prepare(mesh, this.weaponMaterial);
+		this.configure(mesh, this.weaponMaterial);
 		return mesh;
 	}
 
@@ -190,28 +199,7 @@ export class CombatHitboxDebugRenderer {
 		return mesh;
 	}
 
-	private material(name: string, color: BABYLON.Color3) {
-		const material = new BABYLON.StandardMaterial(name, this.scene);
-		material.disableLighting = true;
-		material.emissiveColor = color;
-		material.wireframe = true;
-		material.backFaceCulling = false;
-		// Conserve la profondeur du monde pour le shader d'éclairage radial.
-		material.disableDepthWrite = true;
-		return material;
-	}
-
-	private prepare(mesh: BABYLON.Mesh, material: BABYLON.Material) {
-		mesh.material = material;
-		mesh.isPickable = false;
-		mesh.renderingGroupId = COMBAT_HITBOX_RENDERING_GROUP;
-	}
-
-	private removeMissing(map: Map<string, BABYLON.Mesh>, alive: Set<string>) {
-		for (const [id, mesh] of map)
-			if (!alive.has(id)) {
-				mesh.dispose();
-				map.delete(id);
-			}
+	private configure(mesh: BABYLON.Mesh, material: BABYLON.Material) {
+		configureDebugMesh(mesh, material, COMBAT_HITBOX_RENDERING_GROUP);
 	}
 }

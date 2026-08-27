@@ -1,9 +1,10 @@
 import * as BABYLON from '@babylonjs/core';
-import type { WeaponKind } from '../../../shared-package';
+import type { WeaponKind } from '@transcendence/game-shared';
 import { weaponModels } from '../assets/models/weapons/weaponModels';
 import { CombatAssetLibrary } from './CombatAssetLibrary';
 
 type VisibleWeapon = Exclude<WeaponKind, 'aura' | 'axe'>;
+const VISIBLE_WEAPONS = ['sword', 'staff', 'bow'] as const;
 
 const SWORD_HALF_SWEEP = Math.PI * 0.42;
 const SWORD_REST_YAW = -SWORD_HALF_SWEEP;
@@ -29,7 +30,11 @@ const ATTACK_ANIMATIONS: Record<
 	sword: {
 		name: 'swordArcYaw',
 		property: 'rotation.y',
-		keys: [[0, SWORD_REST_YAW], [10, 0], [20, SWORD_HALF_SWEEP]],
+		keys: [
+			[0, SWORD_REST_YAW],
+			[10, 0],
+			[20, SWORD_HALF_SWEEP],
+		],
 		easingMode: BABYLON.EasingFunction.EASINGMODE_EASEINOUT,
 		endFrame: 20,
 		reset: (root) => (root.rotation.y = SWORD_REST_YAW),
@@ -37,7 +42,11 @@ const ATTACK_ANIMATIONS: Record<
 	bow: {
 		name: 'bowRecoil',
 		property: 'position.z',
-		keys: [[0, BOW_REST_Z], [4, BOW_RECOIL_Z], [11, BOW_REST_Z]],
+		keys: [
+			[0, BOW_REST_Z],
+			[4, BOW_RECOIL_Z],
+			[11, BOW_REST_Z],
+		],
 		easingMode: BABYLON.EasingFunction.EASINGMODE_EASEOUT,
 		endFrame: 11,
 		reset: (root) => (root.position.z = BOW_REST_Z),
@@ -45,7 +54,11 @@ const ATTACK_ANIMATIONS: Record<
 	staff: {
 		name: 'staffCastPitch',
 		property: 'rotation.x',
-		keys: [[0, STAFF_REST_PITCH], [7, STAFF_CAST_PITCH], [16, STAFF_REST_PITCH]],
+		keys: [
+			[0, STAFF_REST_PITCH],
+			[7, STAFF_CAST_PITCH],
+			[16, STAFF_REST_PITCH],
+		],
 		easingMode: BABYLON.EasingFunction.EASINGMODE_EASEINOUT,
 		endFrame: 16,
 		reset: (root) => (root.rotation.x = STAFF_REST_PITCH),
@@ -57,20 +70,37 @@ function isVisibleWeapon(weapon: WeaponKind): weapon is VisibleWeapon {
 }
 
 export class WeaponAttachmentRenderer {
-	private readonly roots = new Map<string, BABYLON.TransformNode[]>();
 	private readonly weaponRoots = new Map<
 		string,
 		Map<VisibleWeapon, BABYLON.TransformNode>
 	>();
 	private readonly generations = new Map<string, number>();
+	private readonly attackAnimations = new Map<
+		VisibleWeapon,
+		BABYLON.Animation
+	>();
 	private readonly assets: CombatAssetLibrary;
 	private disposed = false;
 
 	constructor(assets: CombatAssetLibrary) {
 		this.assets = assets;
+		for (const weapon of VISIBLE_WEAPONS) {
+			const config = ATTACK_ANIMATIONS[weapon];
+			const easing = new BABYLON.QuadraticEase();
+			easing.setEasingMode(config.easingMode);
+			this.attackAnimations.set(
+				weapon,
+				this.floatAnimation(
+					config.name,
+					config.property,
+					config.keys,
+					easing,
+				),
+			);
+		}
 	}
 
-	attachToPlayer(playerId: string, _player: BABYLON.AbstractMesh): void {
+	attachToPlayer(playerId: string): void {
 		const generation = (this.generations.get(playerId) ?? 0) + 1;
 		this.generations.set(playerId, generation);
 		this.disposeRoots(playerId);
@@ -89,7 +119,10 @@ export class WeaponAttachmentRenderer {
 	}
 
 	removePlayer(playerId: string): void {
-		this.generations.set(playerId, (this.generations.get(playerId) ?? 0) + 1);
+		this.generations.set(
+			playerId,
+			(this.generations.get(playerId) ?? 0) + 1,
+		);
 		this.disposeRoots(playerId);
 	}
 
@@ -98,14 +131,7 @@ export class WeaponAttachmentRenderer {
 		const root = this.weaponRoots.get(playerId)?.get(weapon);
 		if (!root || root.isDisposed()) return;
 		const config = ATTACK_ANIMATIONS[weapon];
-		const easing = new BABYLON.QuadraticEase();
-		easing.setEasingMode(config.easingMode);
-		const animation = this.floatAnimation(
-			`${config.name}:${playerId}`,
-			config.property,
-			config.keys,
-			easing,
-		);
+		const animation = this.attackAnimations.get(weapon)!;
 		root.getScene().stopAnimation(root);
 		root.getScene().beginDirectAnimation(
 			root,
@@ -141,8 +167,9 @@ export class WeaponAttachmentRenderer {
 	dispose(): void {
 		this.disposed = true;
 		this.generations.clear();
-		this.roots.forEach((roots) => roots.forEach((root) => root.dispose()));
-		this.roots.clear();
+		this.weaponRoots.forEach((roots) =>
+			roots.forEach((root) => root.dispose()),
+		);
 		this.weaponRoots.clear();
 	}
 
@@ -201,21 +228,21 @@ export class WeaponAttachmentRenderer {
 		}
 		root.rotationQuaternion = null;
 		root.parent = player;
-		root.position.set(...transform.position);
+		const [positionX, positionY, positionZ] = transform.position;
+		root.position.set(positionX, positionY, positionZ);
 		if (weapon === 'sword') root.rotation.set(0, SWORD_REST_YAW, 0);
-		else root.rotation.set(...transform.rotation);
+		else {
+			const [rotationX, rotationY, rotationZ] = transform.rotation;
+			root.rotation.set(rotationX, rotationY, rotationZ);
+		}
 		root.scaling.setAll(transform.scale);
 		const weaponRoots = this.weaponRoots.get(playerId) ?? new Map();
 		weaponRoots.set(weapon, root);
 		this.weaponRoots.set(playerId, weaponRoots);
-		const roots = this.roots.get(playerId) ?? [];
-		roots.push(root);
-		this.roots.set(playerId, roots);
 	}
 
 	private disposeRoots(playerId: string): void {
-		this.roots.get(playerId)?.forEach((root) => root.dispose());
-		this.roots.delete(playerId);
+		this.weaponRoots.get(playerId)?.forEach((root) => root.dispose());
 		this.weaponRoots.delete(playerId);
 	}
 }

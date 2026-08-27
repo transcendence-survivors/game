@@ -1,5 +1,5 @@
 import * as BABYLON from '@babylonjs/core';
-import { type CombatEntity } from '../../../shared-package';
+import { TAU, type CombatEntity } from '@transcendence/game-shared';
 import {
 	weaponModels,
 	type WeaponModelTransform,
@@ -39,8 +39,7 @@ class FireballView extends ProjectileView {
 
 	protected animate(deltaTimeS: number, combatTimeS: number): void {
 		super.animate(deltaTimeS, combatTimeS);
-		const pulse =
-			1 + Math.sin(combatTimeS * 8 + this.seed * Math.PI * 2) * 0.08;
+		const pulse = 1 + Math.sin(combatTimeS * 8 + this.seed * TAU) * 0.08;
 		this.root.scaling.setAll(pulse);
 	}
 }
@@ -56,40 +55,48 @@ export class CombatViewFactory {
 	constructor(scene: BABYLON.Scene, assets: CombatAssetLibrary) {
 		this.scene = scene;
 		this.assets = assets;
-		this.fireballMaterial = new BABYLON.StandardMaterial(
-			'fireballMaterial',
-			scene,
+		[this.fireballSource, this.fireballMaterial] = this.createFireballLayer(
+			'fireball',
+			0.52,
+			[1, 0.2, 0.01],
+			[1, 0.3, 0.015],
 		);
-		this.fireballMaterial.disableLighting = true;
-		this.fireballMaterial.diffuseColor.set(1, 0.2, 0.01);
-		this.fireballMaterial.emissiveColor.set(1, 0.3, 0.015);
-		this.fireballSource = BABYLON.MeshBuilder.CreateIcoSphere(
-			'fireballSource',
-			{ radius: 0.52, subdivisions: 2 },
-			scene,
-		);
-		this.fireballSource.material = this.fireballMaterial;
-		this.fireballSource.isVisible = false;
-		this.fireballSource.isPickable = false;
+		[this.fireballGlowSource, this.fireballGlowMaterial] =
+			this.createFireballLayer(
+				'fireballGlow',
+				0.76,
+				[0.9, 0.08, 0],
+				[1, 0.12, 0.005],
+			);
+		Object.assign(this.fireballGlowMaterial, {
+			alpha: 0.28,
+			alphaMode: BABYLON.Constants.ALPHA_ADD,
+			backFaceCulling: false,
+		});
+	}
 
-		this.fireballGlowMaterial = new BABYLON.StandardMaterial(
-			'fireballGlowMaterial',
-			scene,
+	private createFireballLayer(
+		name: string,
+		radius: number,
+		diffuse: readonly [number, number, number],
+		emissive: readonly [number, number, number],
+	): readonly [BABYLON.Mesh, BABYLON.StandardMaterial] {
+		const material = new BABYLON.StandardMaterial(
+			`${name}Material`,
+			this.scene,
 		);
-		this.fireballGlowMaterial.disableLighting = true;
-		this.fireballGlowMaterial.diffuseColor.set(0.9, 0.08, 0);
-		this.fireballGlowMaterial.emissiveColor.set(1, 0.12, 0.005);
-		this.fireballGlowMaterial.alpha = 0.28;
-		this.fireballGlowMaterial.alphaMode = BABYLON.Constants.ALPHA_ADD;
-		this.fireballGlowMaterial.backFaceCulling = false;
-		this.fireballGlowSource = BABYLON.MeshBuilder.CreateIcoSphere(
-			'fireballGlowSource',
-			{ radius: 0.76, subdivisions: 2 },
-			scene,
+		material.disableLighting = true;
+		material.diffuseColor.set(...diffuse);
+		material.emissiveColor.set(...emissive);
+		const source = BABYLON.MeshBuilder.CreateIcoSphere(
+			`${name}Source`,
+			{ radius, subdivisions: 2 },
+			this.scene,
 		);
-		this.fireballGlowSource.material = this.fireballGlowMaterial;
-		this.fireballGlowSource.isVisible = false;
-		this.fireballGlowSource.isPickable = false;
+		source.material = material;
+		source.isVisible = false;
+		source.isPickable = false;
+		return [source, material];
 	}
 
 	async create(entity: CombatEntity, id: string): Promise<CombatEntityView> {
@@ -130,17 +137,14 @@ export class CombatViewFactory {
 		kind: 'arrow' | 'axe',
 	): Promise<ProjectileView> {
 		const root = new BABYLON.TransformNode(`${kind}:${id}`, this.scene);
-		const model = await this.assets.instantiate(
-			kind,
-			`${kind}Model:${id}`,
-		);
+		const model = await this.assets.instantiate(kind, `${kind}Model:${id}`);
 		let parent = root;
 		if (kind === 'axe') {
 			parent = new BABYLON.TransformNode(`axeSpinner:${id}`, this.scene);
 			parent.parent = root;
 		}
 		model.parent = parent;
-		this.applyTransform(model, weaponModels[kind].combat!);
+		this.applyTransform(model, weaponModels[kind].combat);
 		if (kind === 'axe') {
 			model.scaling.scaleInPlace(entity.scale);
 			return new AxeView(entity, root, parent);

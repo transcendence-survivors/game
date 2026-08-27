@@ -1,15 +1,15 @@
 import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { CombatEntity, GameState } from '../../../shared-package';
+import type { CombatEntity, GameState } from '@transcendence/game-shared';
 import { CombatAssetLibrary } from './CombatAssetLibrary';
 import type { CombatEntityView } from './CombatEntityView';
 import { CombatViewFactory } from './CombatViewFactory';
 import { AsyncViewRegistry } from './AsyncViewRegistry';
 import type { WeaponAttachmentRenderer } from './WeaponAttachmentRenderer';
 import { CombatHitboxDebugRenderer } from './CombatHitboxDebugRenderer';
+import { CleanupBag } from '../CleanupBag';
 
 export class CombatRenderer {
-	private readonly assets: CombatAssetLibrary;
 	private readonly factory: CombatViewFactory;
 	private readonly views = new AsyncViewRegistry<CombatEntityView>();
 	private readonly observer: BABYLON.Observer<BABYLON.Scene>;
@@ -17,6 +17,7 @@ export class CombatRenderer {
 	private readonly room: COLYSEUS.Room<GameState>;
 	private readonly weaponAttachments: WeaponAttachmentRenderer;
 	private readonly hitboxes: CombatHitboxDebugRenderer;
+	private readonly subscriptions = new CleanupBag();
 
 	constructor(
 		scene: BABYLON.Scene,
@@ -26,23 +27,29 @@ export class CombatRenderer {
 	) {
 		this.scene = scene;
 		this.room = room;
-		this.assets = assets;
 		this.weaponAttachments = weaponAttachments;
-		this.factory = new CombatViewFactory(scene, this.assets);
+		this.factory = new CombatViewFactory(scene, assets);
 		this.hitboxes = new CombatHitboxDebugRenderer(scene, room.state);
 		this.observer = scene.onBeforeRenderObservable.add(() => this.update());
 	}
 
 	listen(): void {
 		const callbacks = COLYSEUS.Callbacks.get(this.room);
-		callbacks.onAdd(
-			'combatEntities',
-			(entity, id) => void this.add(entity, id),
+		this.subscriptions.add(
+			callbacks.onAdd(
+				'combatEntities',
+				(entity, id) => void this.add(entity, id),
+			),
 		);
-		callbacks.onRemove('combatEntities', (_entity, id) => this.remove(id));
+		this.subscriptions.add(
+			callbacks.onRemove('combatEntities', (_entity, id) =>
+				this.remove(id),
+			),
+		);
 	}
 
 	dispose(): void {
+		this.subscriptions.dispose();
 		this.scene.onBeforeRenderObservable.remove(this.observer);
 		this.views.dispose();
 		this.factory.dispose();
@@ -78,7 +85,6 @@ export class CombatRenderer {
 		this.views.forEach((view, id) => {
 			const entity = this.room.state.combatEntities.get(id);
 			if (!entity) return;
-			view.synchronize(entity);
 			view.update(deltaTimeS, this.room.state.combatTimeS);
 		});
 	}

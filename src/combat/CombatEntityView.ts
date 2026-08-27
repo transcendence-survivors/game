@@ -1,5 +1,5 @@
 import * as BABYLON from '@babylonjs/core';
-import type { CombatEntity } from '../../../shared-package';
+import type { CombatEntity } from '@transcendence/game-shared';
 
 const SNAP_DISTANCE_SQUARED = 36;
 const INTERPOLATION_SPEED = 20;
@@ -17,7 +17,7 @@ export function shouldSnapCombatEntity(distanceSquared: number): boolean {
 }
 
 export class CombatEntityView {
-	protected entity: CombatEntity;
+	protected readonly entity: CombatEntity;
 	protected readonly root: BABYLON.TransformNode;
 	private readonly target = new BABYLON.Vector3();
 
@@ -25,10 +25,6 @@ export class CombatEntityView {
 		this.entity = entity;
 		this.root = root;
 		this.snap();
-	}
-
-	synchronize(entity: CombatEntity): void {
-		this.entity = entity;
 	}
 
 	update(deltaTimeS: number, combatTimeS: number): void {
