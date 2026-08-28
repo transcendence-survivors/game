@@ -1,91 +1,212 @@
 import * as GUI from '@babylonjs/gui';
 import * as BABYLON from '@babylonjs/core';
+import { MONSTER_DIRECTOR_CONFIG } from '@transcendence/game-shared';
+import { createFullscreenUi } from './assets/ui';
+import { HUD_THEME, hudText, styleHudPanel } from './hud/HudTheme';
+import type { MonsterRendererStats } from './monsters/MonsterRenderer';
+import { FrameTimeHistory } from './performance/FrameTimeHistory';
+
+const FRAME_TIME_WINDOW_MS = 60_000;
+const GPU_NANOSECONDS_TO_MILLISECONDS = 1_000_000;
+const DEBUG_PANEL_SCALE = 0.75;
 
 interface DebugStats {
 	position: GUI.TextBlock;
 	rotation: GUI.TextBlock;
 	fps: GUI.TextBlock;
 	frameTime: GUI.TextBlock;
+	cpuFrameTime: GUI.TextBlock;
+	cpuFrameAverage: GUI.TextBlock;
+	gpuFrameTime: GUI.TextBlock;
+	gpuFrameAverage: GUI.TextBlock;
 	drawCalls: GUI.TextBlock;
 	resources: GUI.TextBlock;
+	animations: GUI.TextBlock;
+	skinning: GUI.TextBlock;
+	animationTime: GUI.TextBlock;
+	monsters: GUI.TextBlock;
 }
+
+const EMPTY_MONSTER_STATS: Readonly<MonsterRendererStats> = {
+	total: 0,
+	elites: 0,
+	bosses: 0,
+	rendered: 0,
+};
 
 export class DebugMenu {
 	private static readonly UPDATE_INTERVAL_MS = 100;
 	private debugStats!: DebugStats;
-	private engine!: BABYLON.Engine;
+	private readonly engine: BABYLON.Engine;
 	private lastUpdateMs = 0;
+	private readonly enabled: boolean;
+	private panel: GUI.Rectangle | null = null;
+	private panelVisible = true;
 	private hitboxesVisible = false;
-	private immortalEnabled = false;
+	private ui: GUI.AdvancedDynamicTexture | null = null;
+	private readonly instrumentation: BABYLON.SceneInstrumentation | null;
+	private readonly engineInstrumentation: BABYLON.EngineInstrumentation | null;
+	private readonly cpuFrameHistory = new FrameTimeHistory(
+		FRAME_TIME_WINDOW_MS,
+	);
+	private readonly gpuFrameHistory = new FrameTimeHistory(
+		FRAME_TIME_WINDOW_MS,
+	);
+	private readonly frameStartObserver: BABYLON.Observer<BABYLON.AbstractEngine> | null;
+	private readonly frameEndObserver: BABYLON.Observer<BABYLON.AbstractEngine> | null;
+	private readonly gpuTimingSupported: boolean;
+	private frameStartMs: number | null = null;
+	private currentCpuFrameMs: number | null = null;
+	private currentGpuFrameMs: number | null = null;
+	private lastDrawCalls = 0;
+	private lastGpuCounterCount = 0;
 	private readonly onHitboxesChanged: (visible: boolean) => void;
 	private readonly onImmortalChanged: (enabled: boolean) => void;
+	private readonly onMonsterStressChanged: (enabled: boolean) => void;
+	private readonly getMonsterStats: () => Readonly<MonsterRendererStats>;
+	private readonly keyDownHandler = (event: KeyboardEvent) => {
+		if (event.code !== 'F3' || event.repeat || !this.enabled) return;
+		event.preventDefault();
+		event.stopPropagation();
+		this.setPanelVisible(!this.panelVisible);
+	};
 
 	constructor(
 		engine: BABYLON.Engine,
+		scene: BABYLON.Scene,
 		onHitboxesChanged: (visible: boolean) => void = () => {},
 		onImmortalChanged: (enabled: boolean) => void = () => {},
+		enabled = true,
+		onMonsterStressChanged: (enabled: boolean) => void = () => {},
+		getMonsterStats: () => Readonly<MonsterRendererStats> = () =>
+			EMPTY_MONSTER_STATS,
 	) {
 		this.engine = engine;
+		this.enabled = enabled;
+		this.gpuTimingSupported =
+			enabled && Boolean(engine.getCaps().timerQuery);
+		this.instrumentation = enabled
+			? new BABYLON.SceneInstrumentation(scene)
+			: null;
+		if (this.instrumentation) {
+			this.instrumentation.captureAnimationsTime = true;
+		}
+		this.engineInstrumentation = enabled
+			? new BABYLON.EngineInstrumentation(engine)
+			: null;
+		if (this.engineInstrumentation && this.gpuTimingSupported) {
+			this.engineInstrumentation.captureGPUFrameTime = true;
+		}
+		this.frameStartObserver = enabled
+			? engine.onBeginFrameObservable.add(() => {
+					if (this.panelVisible)
+						this.frameStartMs = performance.now();
+				})
+			: null;
+		this.frameEndObserver = enabled
+			? engine.onEndFrameObservable.add(() => this.recordFrameTimes())
+			: null;
 		this.onHitboxesChanged = onHitboxesChanged;
 		this.onImmortalChanged = onImmortalChanged;
-		this.initGUI();
+		this.onMonsterStressChanged = onMonsterStressChanged;
+		this.getMonsterStats = getMonsterStats;
+		if (enabled) {
+			this.initGUI(scene);
+			window.addEventListener('keydown', this.keyDownHandler);
+		}
 	}
 
-	initGUI() {
-		const ui = GUI.AdvancedDynamicTexture.CreateFullscreenUI('UI');
+	private initGUI(scene: BABYLON.Scene): void {
+		this.ui = createFullscreenUi('DebugUi', scene);
+		this.ui.useInvalidateRectOptimization = true;
 		const debugMenu = new GUI.Rectangle('debugMenu');
+		this.panel = debugMenu;
 
-		ui.renderAtIdealSize = true;
-		ui.idealWidth = 1920;
-		ui.idealHeight = 1080;
-		debugMenu.width = '22%';
-		debugMenu.height = '52%';
-		debugMenu.cornerRadius = 10;
-		debugMenu.thickness = 1;
-		debugMenu.color = 'white';
-		debugMenu.background = 'rgba(20, 20, 20, 0.85)';
+		debugMenu.width = '430px';
+		debugMenu.height = '640px';
 		debugMenu.horizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT;
 		debugMenu.verticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_TOP;
-		debugMenu.left = '-12px';
-		debugMenu.top = '12px';
-		ui.addControl(debugMenu);
+		debugMenu.left = '36px';
+		debugMenu.top = '-62px';
+		debugMenu.scaleX = DEBUG_PANEL_SCALE;
+		debugMenu.scaleY = DEBUG_PANEL_SCALE;
+		debugMenu.zIndex = 50;
+		styleHudPanel(debugMenu, HUD_THEME.xp);
+		this.ui.addControl(debugMenu);
 
-		const panel = new GUI.StackPanel();
-		panel.paddingTop = '10px';
-		panel.paddingRight = '10px';
-		panel.paddingLeft = '10px';
+		const panel = new GUI.StackPanel('DebugContent');
+		panel.paddingTop = '16px';
+		panel.paddingRight = '18px';
+		panel.paddingLeft = '18px';
 		panel.spacing = 0;
 		debugMenu.addControl(panel);
 
-		const title = new GUI.TextBlock();
-		title.text = 'Debug Menu';
-		title.height = '30px';
-		title.color = 'white';
-		title.fontSize = 22;
-		title.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_TOP;
-		title.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
-		panel.addControl(title);
+		const header = new GUI.StackPanel('DebugHeader');
+		header.isVertical = false;
+		header.width = '370px';
+		header.height = '44px';
+		panel.addControl(header);
+		const title = hudText('DebugTitle', 'DIAGNOSTIC', 20, HUD_THEME.text);
+		title.fontWeight = 'bold';
+		title.width = '246px';
+		title.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+		header.addControl(title);
+		const shortcut = new GUI.Rectangle('DebugShortcut');
+		shortcut.width = '108px';
+		shortcut.height = '30px';
+		shortcut.background = HUD_THEME.xpDark;
+		shortcut.color = HUD_THEME.xp;
+		shortcut.thickness = 1;
+		shortcut.cornerRadius = 6;
+		shortcut.isPointerBlocker = false;
+		header.addControl(shortcut);
+		const shortcutText = hudText(
+			'DebugShortcutText',
+			'F3  MASQUER',
+			11,
+			HUD_THEME.xp,
+		);
+		shortcutText.fontWeight = 'bold';
+		shortcut.addControl(shortcutText);
+
+		const addSection = (text: string) => {
+			const section = hudText(
+				`DebugSection${text}`,
+				text,
+				11,
+				HUD_THEME.gold,
+			);
+			section.fontWeight = 'bold';
+			section.height = '28px';
+			section.textHorizontalAlignment =
+				GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+			panel.addControl(section);
+		};
+		addSection('TEMPS RÉEL');
 
 		const addStatLine = (label: string) => {
-			const row = new GUI.StackPanel();
+			const row = new GUI.StackPanel(`DebugStat${label}`);
 			row.isVertical = false;
-			row.height = '24px';
-			row.paddingTop = '4px';
+			row.height = '25px';
 
-			const labelBlock = new GUI.TextBlock();
-			labelBlock.text = label;
-			labelBlock.color = '#aaaaaa';
-			labelBlock.fontSize = 16;
-			labelBlock.width = '120px';
+			const labelBlock = hudText(
+				`DebugStat${label}Label`,
+				label,
+				13,
+				HUD_THEME.muted,
+			);
+			labelBlock.width = '122px';
 			labelBlock.textHorizontalAlignment =
 				GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
 			row.addControl(labelBlock);
 
-			const valueBlock = new GUI.TextBlock();
-			valueBlock.text = '-';
-			valueBlock.color = 'white';
-			valueBlock.fontSize = 16;
-			valueBlock.width = '250px';
+			const valueBlock = hudText(
+				`DebugStat${label}Value`,
+				'-',
+				14,
+				HUD_THEME.text,
+			);
+			valueBlock.width = '254px';
 			valueBlock.textHorizontalAlignment =
 				GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
 			row.addControl(valueBlock);
@@ -98,74 +219,104 @@ export class DebugMenu {
 			rotation: addStatLine('Rotation:'),
 			fps: addStatLine('FPS:'),
 			frameTime: addStatLine('Frame:'),
+			cpuFrameTime: addStatLine('CPU frame:'),
+			cpuFrameAverage: addStatLine('CPU avg 60s:'),
+			gpuFrameTime: addStatLine('GPU frame:'),
+			gpuFrameAverage: addStatLine('GPU avg 60s:'),
 			drawCalls: addStatLine('Draw calls:'),
 			resources: addStatLine('Resources:'),
+			animations: addStatLine('Animations:'),
+			skinning: addStatLine('Skinning:'),
+			animationTime: addStatLine('Anim. CPU:'),
+			monsters: addStatLine('Monstres:'),
 		};
+		addSection('OUTILS DE TEST');
 
-		const hitboxRow = new GUI.StackPanel('hitboxToggleRow');
-		hitboxRow.isVertical = false;
-		hitboxRow.height = '34px';
-		hitboxRow.paddingTop = '8px';
-
-		const hitboxLabel = new GUI.TextBlock(
-			'hitboxToggleLabel',
+		const addToggle = (
+			name: string,
+			labelText: string,
+			labelColor: string,
+			toggleColor: string,
+			checked: boolean,
+			onChanged: (checked: boolean) => void,
+		) => {
+			const row = new GUI.StackPanel(`${name}Row`);
+			row.isVertical = false;
+			row.height = '40px';
+			const label = hudText(`${name}Label`, labelText, 14, labelColor);
+			label.width = '330px';
+			label.textHorizontalAlignment =
+				GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+			row.addControl(label);
+			const toggle = new GUI.Checkbox(name);
+			toggle.width = '24px';
+			toggle.height = '24px';
+			toggle.color = toggleColor;
+			toggle.background = HUD_THEME.panelHover;
+			toggle.isChecked = checked;
+			toggle.onIsCheckedChangedObservable.add(onChanged);
+			row.addControl(toggle);
+			panel.addControl(row);
+		};
+		addToggle(
+			'hitboxToggle',
 			'Hitboxes 3D',
+			'#ff8b72',
+			'#ff5c5c',
+			this.hitboxesVisible,
+			(visible) => {
+				this.hitboxesVisible = visible;
+				this.onHitboxesChanged(visible);
+			},
 		);
-		hitboxLabel.color = '#ff8b72';
-		hitboxLabel.fontSize = 16;
-		hitboxLabel.width = '190px';
-		hitboxLabel.textHorizontalAlignment =
-			GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-		hitboxRow.addControl(hitboxLabel);
-
-		const hitboxToggle = new GUI.Checkbox('hitboxToggle');
-		hitboxToggle.width = '22px';
-		hitboxToggle.height = '22px';
-		hitboxToggle.color = '#ff5c5c';
-		hitboxToggle.background = '#252525';
-		hitboxToggle.isChecked = this.hitboxesVisible;
-		hitboxToggle.onIsCheckedChangedObservable.add((visible) => {
-			this.hitboxesVisible = visible;
-			this.onHitboxesChanged(visible);
-		});
-		hitboxRow.addControl(hitboxToggle);
-		panel.addControl(hitboxRow);
-
-		const immortalRow = new GUI.StackPanel('immortalToggleRow');
-		immortalRow.isVertical = false;
-		immortalRow.height = '34px';
-		immortalRow.paddingTop = '8px';
-
-		const immortalLabel = new GUI.TextBlock(
-			'immortalToggleLabel',
+		addToggle(
+			'immortalToggle',
 			'Mode immortel',
+			'#ffd166',
+			'#ffd166',
+			false,
+			this.onImmortalChanged,
 		);
-		immortalLabel.color = '#ffd166';
-		immortalLabel.fontSize = 16;
-		immortalLabel.width = '190px';
-		immortalLabel.textHorizontalAlignment =
-			GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-		immortalRow.addControl(immortalLabel);
-
-		const immortalToggle = new GUI.Checkbox('immortalToggle');
-		immortalToggle.width = '22px';
-		immortalToggle.height = '22px';
-		immortalToggle.color = '#ffd166';
-		immortalToggle.background = '#252525';
-		immortalToggle.isChecked = this.immortalEnabled;
-		immortalToggle.onIsCheckedChangedObservable.add((enabled) => {
-			this.immortalEnabled = enabled;
-			this.onImmortalChanged(enabled);
-		});
-		immortalRow.addControl(immortalToggle);
-		panel.addControl(immortalRow);
+		addToggle(
+			'monsterStressToggle',
+			`Stress ${MONSTER_DIRECTOR_CONFIG.stressTestPopulation} monstres`,
+			'#ff7bff',
+			'#ff7bff',
+			false,
+			this.onMonsterStressChanged,
+		);
 	}
 
 	areHitboxesVisible(): boolean {
 		return this.hitboxesVisible;
 	}
 
-	updateDebugMenu(player: BABYLON.AbstractMesh) {
+	private setPanelVisible(visible: boolean): void {
+		this.panelVisible = visible;
+		if (this.panel) this.panel.isVisible = visible;
+		if (this.instrumentation)
+			this.instrumentation.captureAnimationsTime = visible;
+		if (this.engineInstrumentation && this.gpuTimingSupported)
+			this.engineInstrumentation.captureGPUFrameTime = visible;
+		if (visible) this.lastUpdateMs = 0;
+		else this.frameStartMs = null;
+	}
+
+	dispose(): void {
+		window.removeEventListener('keydown', this.keyDownHandler);
+		this.engine.onBeginFrameObservable.remove(this.frameStartObserver);
+		this.engine.onEndFrameObservable.remove(this.frameEndObserver);
+		if (this.engineInstrumentation) {
+			this.engineInstrumentation.captureGPUFrameTime = false;
+			this.engineInstrumentation.dispose();
+		}
+		this.instrumentation?.dispose();
+		this.ui?.dispose();
+	}
+
+	updateDebugMenu(player: BABYLON.AbstractMesh): void {
+		if (!this.enabled || !this.panelVisible || !this.instrumentation)
+			return;
 		const now = performance.now();
 		if (now - this.lastUpdateMs < DebugMenu.UPDATE_INTERVAL_MS) return;
 		this.lastUpdateMs = now;
@@ -176,13 +327,69 @@ export class DebugMenu {
 		const rot = BABYLON.NormalizeRadians(player.rotation.y);
 		this.debugStats.rotation.text = `${BABYLON.Tools.ToDegrees(rot).toFixed(1)}°`;
 
-		this.debugStats.fps.text = this.engine.getFps().toFixed(0);
-		this.debugStats.frameTime.text = `${(1000 / Math.max(1, this.engine.getFps())).toFixed(1)} ms`;
+		const fps = this.engine.getFps();
+		this.debugStats.fps.text = fps.toFixed(0);
+		this.debugStats.frameTime.text = `${(1000 / Math.max(1, fps)).toFixed(1)} ms`;
+		const cpuAverageMs = this.cpuFrameHistory.average(now);
+		const gpuAverageMs = this.gpuFrameHistory.average(now);
+		this.debugStats.cpuFrameTime.text = this.formatMilliseconds(
+			this.currentCpuFrameMs,
+		);
+		this.debugStats.cpuFrameAverage.text =
+			this.formatMilliseconds(cpuAverageMs);
+		this.debugStats.gpuFrameTime.text = this.formatMilliseconds(
+			this.currentGpuFrameMs,
+		);
+		this.debugStats.gpuFrameAverage.text =
+			this.formatMilliseconds(gpuAverageMs);
 		const scene = player.getScene();
-		const drawCalls = (
-			this.engine as unknown as { _drawCalls?: { current: number } }
-		)._drawCalls?.current;
-		this.debugStats.drawCalls.text = String(drawCalls ?? 0);
+		const monsterStats = this.getMonsterStats();
+		this.debugStats.monsters.text =
+			`${monsterStats.total} (${monsterStats.elites} élites / ${monsterStats.bosses} boss / ` +
+			`${monsterStats.rendered} visibles)`;
+		this.debugStats.drawCalls.text = String(this.lastDrawCalls);
 		this.debugStats.resources.text = `${scene.meshes.length} meshes / ${scene.materials.length} materials`;
+		this.debugStats.animations.text =
+			`${scene.animatables.length} animatables / ` +
+			`${scene.getActiveBones()} active bones`;
+		let gpuMeshes = 0;
+		let cpuMeshes = 0;
+		for (const mesh of scene.meshes) {
+			if (!mesh.useBones || !mesh.skeleton) continue;
+			if (mesh.computeBonesUsingShaders) gpuMeshes++;
+			else cpuMeshes++;
+		}
+		this.debugStats.skinning.text = `${gpuMeshes} GPU meshes / ${cpuMeshes} CPU meshes`;
+		this.debugStats.animationTime.text = `${this.instrumentation.animationsTimeCounter.current.toFixed(2)} ms`;
+	}
+
+	private recordFrameTimes(): void {
+		if (!this.panelVisible) return;
+		const now = performance.now();
+		// SceneInstrumentation resets the engine draw-call counter at the start
+		// of the next Babylon render cycle. Keep the completed frame's value so
+		// the game-loop observer does not read the freshly reset counter.
+		if (this.instrumentation)
+			this.lastDrawCalls = this.instrumentation.drawCallsCounter.current;
+
+		if (this.frameStartMs !== null) {
+			this.currentCpuFrameMs = Math.max(0, now - this.frameStartMs);
+			this.cpuFrameHistory.add(this.currentCpuFrameMs, now);
+		}
+
+		if (!this.engineInstrumentation || !this.gpuTimingSupported) return;
+		const gpuCounter = this.engineInstrumentation.gpuFrameTimeCounter;
+		if (gpuCounter.count <= this.lastGpuCounterCount) return;
+
+		this.lastGpuCounterCount = gpuCounter.count;
+		const gpuFrameMs = gpuCounter.current / GPU_NANOSECONDS_TO_MILLISECONDS;
+		if (!Number.isFinite(gpuFrameMs) || gpuFrameMs < 0) return;
+
+		this.currentGpuFrameMs = gpuFrameMs;
+		this.gpuFrameHistory.add(gpuFrameMs, now);
+	}
+
+	private formatMilliseconds(valueMs: number | null): string {
+		return valueMs === null ? 'N/D' : `${valueMs.toFixed(2)} ms`;
 	}
 }
