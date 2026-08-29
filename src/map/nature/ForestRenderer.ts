@@ -52,10 +52,8 @@ interface ThinInstanceBatch {
 	lastVisibilityVersion: number;
 }
 
-interface ForestRenderPage {
+interface ForestRenderPage extends Vec2d {
 	readonly key: string;
-	readonly x: number;
-	readonly z: number;
 	readonly root: BABYLON.TransformNode;
 	readonly chunks: Set<LoadedForestChunk>;
 	readonly thinBatches: Map<string, ThinInstanceBatch>;
@@ -1269,14 +1267,16 @@ export class ForestRenderer {
 		const supportPoints = points.length
 			? capSupportPoints(points)
 			: [allPoints[0]!];
-		const center = supportPoints.reduce(
-			(sum, candidate) => ({
-				x: sum.x + candidate.x / supportPoints.length,
-				y: sum.y + candidate.y / supportPoints.length,
-				z: sum.z + candidate.z / supportPoints.length,
-			}),
-			{ x: 0, y: 0, z: 0 },
-		);
+		const center = { x: 0, y: 0, z: 0 };
+		for (const point of supportPoints) {
+			center.x += point.x;
+			center.y += point.y;
+			center.z += point.z;
+		}
+		const inversePointCount = 1 / supportPoints.length;
+		center.x *= inversePointCount;
+		center.y *= inversePointCount;
+		center.z *= inversePointCount;
 		const metadata: SupportMetadata = {
 			points: supportPoints,
 			center,

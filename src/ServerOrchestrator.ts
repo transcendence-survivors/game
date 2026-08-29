@@ -78,6 +78,8 @@ interface ReconciliationSnapshot extends AuthoritativeMovementState {
 	pendingInputLastSeq: number | null;
 }
 
+type RemoteTarget = Vec3d & { rotationY: number };
+
 function isAuthoritativeMovementState(
 	state: Partial<AuthoritativeMovementState>,
 ): state is AuthoritativeMovementState {
@@ -94,10 +96,7 @@ function isAuthoritativeMovementState(
 
 export class ServerOrchestrator {
 	private readonly scene: BABYLON.Scene;
-	private readonly remoteTargets: Map<
-		string,
-		{ x: number; z: number; y: number; rotationY: number }
-	> = new Map();
+	private readonly remoteTargets = new Map<string, RemoteTarget>();
 	private readonly remotePlayers = new AsyncViewRegistry<RemotePlayerView>();
 	private mapGen!: MapGenerator;
 	private readonly room: COLYSEUS.Room<GameState>;
@@ -122,7 +121,20 @@ export class ServerOrchestrator {
 		centerZ: 0,
 		radius: PLAYER_ACCESS_RADIUS,
 	};
-	private lastReconciliation: ReconciliationSnapshot | null = null;
+	private readonly lastReconciliation: ReconciliationSnapshot = {
+		x: 0,
+		y: 0,
+		z: 0,
+		rotationY: 0,
+		velocityY: 0,
+		isGrounded: true,
+		lastProcessedSeq: 0,
+		moveSpeed: 0,
+		pendingInputHead: 0,
+		pendingInputLength: 0,
+		pendingInputLastSeq: null,
+	};
+	private hasLastReconciliation = false;
 
 	constructor(
 		scene: BABYLON.Scene,
@@ -136,7 +148,7 @@ export class ServerOrchestrator {
 
 	setPlayer(player: BABYLON.AbstractMesh) {
 		this.player = player;
-		this.lastReconciliation = null;
+		this.hasLastReconciliation = false;
 		this.weaponAttachments.attachToPlayer(this.room.sessionId);
 	}
 
@@ -395,28 +407,28 @@ export class ServerOrchestrator {
 		this.player.position.y = state.y;
 		this.player.position.z = state.z;
 		this.player.rotation.y = state.rotationY;
-		this.lastReconciliation = {
-			x: authoritativeState.x,
-			y: authoritativeState.y,
-			z: authoritativeState.z,
-			rotationY: authoritativeState.rotationY,
-			velocityY: authoritativeState.velocityY,
-			isGrounded: authoritativeState.isGrounded,
-			lastProcessedSeq: authoritativeState.lastProcessedSeq,
-			moveSpeed,
-			pendingInputHead: this.pendingInputHead,
-			pendingInputLength: this.pendingInputs.length,
-			pendingInputLastSeq:
-				this.pendingInputs[this.pendingInputs.length - 1]?.seq ?? null,
-		};
+		const snapshot = this.lastReconciliation;
+		snapshot.x = authoritativeState.x;
+		snapshot.y = authoritativeState.y;
+		snapshot.z = authoritativeState.z;
+		snapshot.rotationY = authoritativeState.rotationY;
+		snapshot.velocityY = authoritativeState.velocityY;
+		snapshot.isGrounded = authoritativeState.isGrounded;
+		snapshot.lastProcessedSeq = authoritativeState.lastProcessedSeq;
+		snapshot.moveSpeed = moveSpeed;
+		snapshot.pendingInputHead = this.pendingInputHead;
+		snapshot.pendingInputLength = this.pendingInputs.length;
+		snapshot.pendingInputLastSeq =
+			this.pendingInputs[this.pendingInputs.length - 1]?.seq ?? null;
+		this.hasLastReconciliation = true;
 	}
 
 	private isDuplicateReconciliation(
 		serverState: AuthoritativeMovementState,
 		moveSpeed: number,
 	): boolean {
+		if (!this.hasLastReconciliation) return false;
 		const previous = this.lastReconciliation;
-		if (!previous) return false;
 		return (
 			Object.is(previous.x, serverState.x) &&
 			Object.is(previous.y, serverState.y) &&
@@ -556,6 +568,6 @@ export class ServerOrchestrator {
 		this.recycledInputs.length = 0;
 		this.pendingInputHead = 0;
 		this.unsentPredictionInput.deltaTime = 0;
-		this.lastReconciliation = null;
+		this.hasLastReconciliation = false;
 	}
 }

@@ -5,10 +5,29 @@ function pathBand(distance: number, innerRadius: number, outerRadius: number) {
 	return 1 - smoothstep(innerRadius, outerRadius, Math.abs(distance));
 }
 
-interface GroundBiomeWeights {
-	readonly meadow: number;
-	readonly forest: number;
-	readonly rocky: number;
+function sharpenBiomeScore(score: number): number {
+	return score ** 1.65;
+}
+
+export interface GroundBiomeWeights {
+	meadow: number;
+	forest: number;
+	rocky: number;
+}
+
+export interface GroundPathParameters {
+	readonly phase: number;
+	readonly sinPhase: number;
+	readonly sinNegativeHalfPhase: number;
+}
+
+export function createGroundPathParameters(seed: number): GroundPathParameters {
+	const phase = ((seed >>> 0) / 4294967296) * TAU;
+	return {
+		phase,
+		sinPhase: Math.sin(phase),
+		sinNegativeHalfPhase: Math.sin(-phase * 0.5),
+	};
 }
 
 /**
@@ -20,6 +39,7 @@ export function groundBiomeWeights(
 	x: number,
 	z: number,
 	seed: number,
+	result: GroundBiomeWeights = { meadow: 0, forest: 0, rocky: 0 },
 ): GroundBiomeWeights {
 	const climate =
 		0.5 + 0.5 * fbm2d(x * 0.006 + 17, z * 0.006 - 11, seed ^ 0x68bc21eb);
@@ -43,16 +63,14 @@ export function groundBiomeWeights(
 	// Sharpen the normalized weights so neighboring chunks transition softly,
 	// but a dominant biome still reads as a real region instead of a uniform
 	// average of all three palettes.
-	const sharpen = (score: number) => score ** 1.65;
-	const sharpMeadow = sharpen(meadowScore);
-	const sharpForest = sharpen(forestScore);
-	const sharpRocky = sharpen(rockyScore);
+	const sharpMeadow = sharpenBiomeScore(meadowScore);
+	const sharpForest = sharpenBiomeScore(forestScore);
+	const sharpRocky = sharpenBiomeScore(rockyScore);
 	const total = sharpMeadow + sharpForest + sharpRocky;
-	return {
-		meadow: sharpMeadow / total,
-		forest: sharpForest / total,
-		rocky: sharpRocky / total,
-	};
+	result.meadow = sharpMeadow / total;
+	result.forest = sharpForest / total;
+	result.rocky = sharpRocky / total;
+	return result;
 }
 
 /**
@@ -60,16 +78,24 @@ export function groundBiomeWeights(
  * Keeping the field in one pure module makes visual paths and clearings agree
  * at chunk boundaries without putting decorative data in the game state.
  */
-export function groundPathFactor(x: number, z: number, seed: number): number {
-	const phase = ((seed >>> 0) / 4294967296) * TAU;
+export function groundPathFactor(
+	x: number,
+	z: number,
+	seed: number,
+	parameters?: GroundPathParameters,
+): number {
+	const phase = parameters?.phase ?? ((seed >>> 0) / 4294967296) * TAU;
+	const sinPhase = parameters?.sinPhase ?? Math.sin(phase);
+	const sinNegativeHalfPhase =
+		parameters?.sinNegativeHalfPhase ?? Math.sin(-phase * 0.5);
 	const centerLine =
 		0.12 * x +
-		13 * (Math.sin(x * 0.028 + phase) - Math.sin(phase)) +
-		5 * (Math.sin(x * 0.075 - phase * 0.5) - Math.sin(-phase * 0.5));
+		13 * (Math.sin(x * 0.028 + phase) - sinPhase) +
+		5 * (Math.sin(x * 0.075 - phase * 0.5) - sinNegativeHalfPhase);
 	const mainPath = pathBand(z - centerLine, 4.5, 10.5);
 
 	const branchLine =
-		-72 + 0.12 * z + 14 * (Math.sin(z * 0.035 + phase) - Math.sin(phase));
+		-72 + 0.12 * z + 14 * (Math.sin(z * 0.035 + phase) - sinPhase);
 	const branchPath = pathBand(x - branchLine, 3.5, 8.5) * 0.88;
 	return Math.max(mainPath, branchPath);
 }

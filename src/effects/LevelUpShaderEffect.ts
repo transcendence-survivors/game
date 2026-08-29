@@ -7,7 +7,11 @@ import {
 	type Scene,
 } from '@babylonjs/core';
 import type { Room } from '@colyseus/sdk';
-import { ServerMessage, type GameState } from '@transcendence/game-shared';
+import {
+	clamp01,
+	ServerMessage,
+	type GameState,
+} from '@transcendence/game-shared';
 import { CleanupBag } from '../CleanupBag';
 
 const EFFECT_DURATION_S = 1.2;
@@ -70,7 +74,7 @@ void main(void) {
 
 export function levelUpPulseProgress(elapsedS: number): number {
 	if (!Number.isFinite(elapsedS)) return 1;
-	return Math.min(1, Math.max(0, elapsedS / EFFECT_DURATION_S));
+	return clamp01(elapsedS / EFFECT_DURATION_S);
 }
 
 export class LevelUpShaderEffect {

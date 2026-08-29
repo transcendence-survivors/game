@@ -1,9 +1,13 @@
+import { clamp01 } from '@transcendence/game-shared';
 import { HUD_BAR_FILL_PERCENT } from './HudConstants';
 
 interface BossHealthCandidate {
 	isBoss: boolean;
 	life: { current: number };
 }
+
+const padTimeComponent = (value: number): string =>
+	String(value).padStart(2, '0');
 
 export function isLivingBoss(monster: BossHealthCandidate): boolean {
 	return (
@@ -16,7 +20,7 @@ export function isLivingBoss(monster: BossHealthCandidate): boolean {
 export function normalizedLifeRatio(current: number, max: number): number {
 	if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0)
 		return 0;
-	return Math.min(1, Math.max(0, current / max));
+	return clamp01(current / max);
 }
 
 export function hudBarWidth(
@@ -34,9 +38,9 @@ export function formatGameTime(totalSeconds: number): string {
 	const seconds = safeSeconds % 60;
 	const totalMinutes = Math.floor(safeSeconds / 60);
 	const minutes = totalMinutes % 60;
-	const pad = (value: number) => String(value).padStart(2, '0');
-
-	return totalMinutes >= 60
-		? `${pad(Math.floor(totalMinutes / 60))}:${pad(minutes)}:${pad(seconds)}`
-		: `${pad(totalMinutes)}:${pad(seconds)}`;
+	const hours =
+		totalMinutes >= 60
+			? `${padTimeComponent(Math.floor(totalMinutes / 60))}:`
+			: '';
+	return `${hours}${padTimeComponent(minutes)}:${padTimeComponent(seconds)}`;
 }

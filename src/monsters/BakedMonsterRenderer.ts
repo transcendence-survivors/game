@@ -3,8 +3,9 @@ import {
 	ELITE_MODEL_SCALE,
 	getMonsterDefinition,
 	MONSTER_MODEL_SCALE,
+	nextPowerOfTwoCapacity,
 	type Monster,
-	type MonsterAnimState,
+	type Vec3d,
 } from '@transcendence/game-shared';
 import type {
 	ModelAssetLibrary,
@@ -17,7 +18,7 @@ import {
 	MONSTER_RENDER_CULLING_CONFIG,
 	type PlanarCameraView,
 } from './MonsterRenderCulling';
-import { semanticAnimationName, type MonsterAnimation } from './MonsterView';
+import { semanticAnimationName } from './MonsterView';
 import {
 	MONSTER_DAMAGE_FLASH_DURATION_S,
 	MONSTER_GROUND_HEIGHT_INTERVAL_S,
@@ -25,9 +26,9 @@ import {
 	MONSTER_MODEL_YAW_OFFSET,
 	MONSTER_POSITION_LERP_SPEED,
 	MONSTER_PRESENTATION_ANIMATIONS,
+	type MonsterPresentationAnimation,
 	type MonsterPresentationState,
 } from './MonsterPresentation';
-import { nextPowerOfTwoCapacity } from '@transcendence/game-shared';
 import { animationFramesPerSecond } from './AnimationOptimization';
 
 const DEFAULT_ANIMATION_FPS = 30;
@@ -45,18 +46,13 @@ interface ClipSource extends BakedClip {
 	sourceTo: number;
 }
 
-interface BakedMonster extends MonsterPresentationState {
+interface BakedMonster extends MonsterPresentationState, Vec3d {
 	visualScale: number;
-	x: number;
-	z: number;
-	y: number;
 	targetY: number;
 	rotationY: number;
 	targetX: number;
 	targetZ: number;
 	targetRotationY: number;
-	animationState: MonsterAnimState | 'death';
-	animationStartedAtS: number;
 	groundAccumulatorS: number;
 	damageFlashRemainingS: number;
 	deathStarted: boolean;
@@ -72,7 +68,7 @@ interface BakedBatch {
 	model: ModelInstance;
 	members: Set<BakedMonster>;
 	meshes: BakedMesh[];
-	clips: Map<MonsterAnimation, BakedClip>;
+	clips: Map<MonsterPresentationAnimation, BakedClip>;
 	capacity: number;
 	matrices: Float32Array;
 	animationSettings: Float32Array;
@@ -81,7 +77,7 @@ interface BakedBatch {
 
 function createClipLayout(
 	animationGroups: BABYLON.AnimationGroup[],
-): Map<MonsterAnimation, ClipSource> {
+): Map<MonsterPresentationAnimation, ClipSource> {
 	const groups = new Map<string, BABYLON.AnimationGroup>();
 	for (const group of animationGroups)
 		groups.set(semanticAnimationName(group.name), group);
@@ -89,7 +85,7 @@ function createClipLayout(
 		groups.get('idle') ?? groups.get('walk') ?? animationGroups[0];
 	if (!fallback) throw new Error('monster model has no animation');
 
-	const layout = new Map<MonsterAnimation, ClipSource>();
+	const layout = new Map<MonsterPresentationAnimation, ClipSource>();
 	let textureFrame = 0;
 	for (const state of MONSTER_PRESENTATION_ANIMATIONS) {
 		const group = groups.get(state) ?? fallback;
@@ -113,14 +109,13 @@ function createClipLayout(
 function bakeMeshAnimation(
 	scene: BABYLON.Scene,
 	mesh: BABYLON.Mesh,
-	layout: Map<MonsterAnimation, ClipSource>,
+	layout: Map<MonsterPresentationAnimation, ClipSource>,
 ): BakedMesh {
 	const skeleton = mesh.skeleton;
 	if (!skeleton) throw new Error(`mesh '${mesh.name}' has no skeleton`);
-	const frameCount = Array.from(layout.values()).reduce(
-		(total, clip) => total + clip.endFrame - clip.startFrame + 1,
-		0,
-	);
+	let frameCount = 0;
+	for (const clip of layout.values())
+		frameCount += clip.endFrame - clip.startFrame + 1;
 	skeleton.prepare(true);
 	const matrixCount = skeleton.getTransformMatrices(mesh).length;
 	const bakedData = new Float32Array(frameCount * matrixCount);
@@ -350,7 +345,7 @@ export class BakedMonsterRenderer {
 				mesh.doNotSyncBoundingInfo = true;
 				mesh.thinInstanceEnablePicking = false;
 			}
-			const clips = new Map<MonsterAnimation, BakedClip>();
+			const clips = new Map<MonsterPresentationAnimation, BakedClip>();
 			for (const [state, clip] of layout)
 				clips.set(state, {
 					startFrame: clip.startFrame,

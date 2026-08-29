@@ -46,6 +46,7 @@ export class ForestQuadtree<T> {
 	private readonly entries = new Map<string, ForestQuadtreeEntry<T>>();
 	private root: ForestQuadtreeNode<T>;
 	private staleEntryCount = 0;
+	private queryRadiusSquared = 0;
 
 	constructor(
 		initialSize: number,
@@ -95,6 +96,9 @@ export class ForestQuadtree<T> {
 		displayCircle?: ForestDisplayCircle,
 	): void {
 		result.clear();
+		this.queryRadiusSquared = displayCircle
+			? displayCircle.radius * displayCircle.radius
+			: 0;
 		this.queryNode(this.root, frustumPlanes, result, displayCircle);
 	}
 
@@ -121,15 +125,13 @@ export class ForestQuadtree<T> {
 	}
 
 	private ensureRootContains(bounds: ForestBounds): boolean {
-		let expanded = false;
-		while (!this.contains(this.root.bounds, bounds)) {
-			this.root = this.createNode(
-				this.expandedBounds(this.root.bounds, bounds),
-			);
-			expanded = true;
-		}
-		if (!expanded) return false;
+		const currentBounds = this.root.bounds;
+		let rootBounds = currentBounds;
+		while (!this.contains(rootBounds, bounds))
+			rootBounds = this.expandedBounds(rootBounds, bounds);
+		if (rootBounds === currentBounds) return false;
 
+		this.root = this.createNode(rootBounds);
 		for (const entry of this.entries.values())
 			this.insertIntoNode(this.root, entry, 0);
 		return true;
@@ -280,7 +282,7 @@ export class ForestQuadtree<T> {
 					: circle.centerZ;
 		const dx = closestX - circle.centerX;
 		const dz = closestZ - circle.centerZ;
-		return dx * dx + dz * dz > circle.radius * circle.radius;
+		return dx * dx + dz * dz > this.queryRadiusSquared;
 	}
 
 	private contains(container: ForestBounds, content: ForestBounds): boolean {

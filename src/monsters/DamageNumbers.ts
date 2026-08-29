@@ -6,6 +6,7 @@ const RISE_PX = 58;
 const START_OFFSET_PX = -8;
 const JITTER_PX = 26;
 const FONT_SIZE = 22;
+const ELITE_FONT_SIZE = 26;
 const BOSS_FONT_SIZE = 32;
 const COLOR = '#ffe14d';
 const FATAL_COLOR = '#ff5a3c';
@@ -52,7 +53,11 @@ export class DamageNumbers {
 		floater.elapsed = 0;
 		text.text = `-${rounded}`;
 		text.color = fatal ? FATAL_COLOR : isElite ? ELITE_COLOR : COLOR;
-		text.fontSize = isBoss ? BOSS_FONT_SIZE : isElite ? 26 : FONT_SIZE;
+		text.fontSize = isBoss
+			? BOSS_FONT_SIZE
+			: isElite
+				? ELITE_FONT_SIZE
+				: FONT_SIZE;
 		text.linkOffsetX = (Math.random() - 0.5) * JITTER_PX;
 		text.linkOffsetY = START_OFFSET_PX;
 		text.alpha = 1;

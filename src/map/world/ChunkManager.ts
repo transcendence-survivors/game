@@ -35,7 +35,7 @@ export class ChunkManager {
 	private readonly mat: StandardMaterial;
 	private readonly size: number;
 	private readonly view: number;
-	private readonly displayRadius: number;
+	private readonly displayRadiusSquared: number;
 	private readonly chunks = new Map<string, LoadedChunk>();
 	private readonly pendingBuilds = new Map<string, PendingBuild>();
 	private readonly readyChunks: ReadyChunk[] = [];
@@ -77,7 +77,8 @@ export class ChunkManager {
 		this.mat = mat;
 		this.size = world.N * world.CELL;
 		this.view = viewDistance;
-		this.displayRadius = Math.max(0, displayRadius);
+		const safeDisplayRadius = Math.max(0, displayRadius);
+		this.displayRadiusSquared = safeDisplayRadius * safeDisplayRadius;
 		this.now = now;
 		this.generation = generation ?? new WorldGenerationClient();
 		this.ownsGeneration = !generation;
@@ -311,7 +312,8 @@ export class ChunkManager {
 	private updateVisibility(centerX: number, centerZ: number): void {
 		const camera = this.scene.activeCamera;
 		if (!camera) return;
-		const viewProjection = camera.getTransformationMatrix().m;
+		const transformation = camera.getTransformationMatrix();
+		const viewProjection = transformation.m;
 		let cameraChanged =
 			this.visibilityDirty || this.lastVisibilityCamera !== camera;
 		if (!cameraChanged)
@@ -327,7 +329,7 @@ export class ChunkManager {
 
 		if (cameraChanged)
 			Frustum.GetPlanesToRef(
-				camera.getTransformationMatrix(),
+				transformation,
 				this.frustumPlanes,
 			);
 		for (const loaded of this.chunks.values()) {
@@ -366,6 +368,6 @@ export class ChunkManager {
 			centerZ < minZ ? minZ : centerZ > maxZ ? maxZ : centerZ;
 		const dx = closestX - centerX;
 		const dz = closestZ - centerZ;
-		return dx * dx + dz * dz <= this.displayRadius * this.displayRadius;
+		return dx * dx + dz * dz <= this.displayRadiusSquared;
 	}
 }

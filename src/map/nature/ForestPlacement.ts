@@ -5,7 +5,13 @@ import {
 	type World,
 	type WorldSurfaceSample,
 } from '@transcendence/game-shared';
-import { groundBiomeWeights, groundPathFactor } from '../world/GroundFeatures';
+import {
+	createGroundPathParameters,
+	groundBiomeWeights,
+	groundPathFactor,
+	type GroundBiomeWeights,
+	type GroundPathParameters,
+} from '../world/GroundFeatures';
 import { fbm2d, smoothstep } from '../world/ProceduralNoise';
 import {
 	FOREST_PLACEMENT_CAPACITY,
@@ -111,6 +117,11 @@ interface TerrainFields {
 	normalZ: number;
 }
 
+interface GroundFeatureScratch {
+	readonly biome: GroundBiomeWeights;
+	readonly path: GroundPathParameters;
+}
+
 const START_CLEAR_RADIUS = 11;
 const RULE_ATTEMPTS = 80;
 const PLACEMENT_GRID_CELL_SIZE = 4;
@@ -170,6 +181,9 @@ const RULES: readonly PlacementRule[] = [
 		maxScale: 1.05,
 	},
 ];
+const RULE_BY_KIND = Object.fromEntries(
+	RULES.map((rule) => [rule.kind, rule]),
+) as Readonly<Record<ForestPlacementKind, PlacementRule>>;
 
 export const FOREST_BIOMES = ['meadow', 'forest', 'rocky'] as const;
 const FOREST_KIND_INDEX: Readonly<Record<ForestPlacementKind, number>> = {
@@ -217,7 +231,7 @@ function hash(
 }
 
 function ruleFor(kind: ForestPlacementKind): PlacementRule {
-	return RULES.find((rule) => rule.kind === kind)!;
+	return RULE_BY_KIND[kind];
 }
 
 function randomBetween(random: RandomSource, min: number, max: number): number {
@@ -230,6 +244,7 @@ function terrainFields(
 	x: number,
 	z: number,
 	surface: WorldSurfaceSample,
+	featureScratch: GroundFeatureScratch,
 	result: TerrainFields,
 ): TerrainFields {
 	const gx = Math.floor(x / world.CELL);
@@ -238,7 +253,7 @@ function terrainFields(
 		world.TIERS <= 1 ? 0 : world.tier(gx, gz) / (world.TIERS - 1);
 	world.sampleSurfaceToRef(x, z, surface);
 	const slope = clamp01((1 - surface.y) * 4.5);
-	const biome = groundBiomeWeights(x, z, world.seed);
+	const biome = groundBiomeWeights(x, z, world.seed, featureScratch.biome);
 	const grove = clamp01(
 		biome.forest *
 			(1 - smoothstep(0.28, 0.7, slope) * 0.55) *
@@ -250,7 +265,7 @@ function terrainFields(
 			smoothstep(0.18, 0.5, slope) * 0.42 +
 			smoothstep(0.55, 0.85, tierFactor) * 0.22,
 	);
-	result.path = groundPathFactor(x, z, world.seed);
+	result.path = groundPathFactor(x, z, world.seed, featureScratch.path);
 	result.grove = grove;
 	result.meadow = meadow;
 	result.rocky = rocky;
@@ -354,6 +369,7 @@ function isFarEnough(
 ): boolean {
 	const cellX = Math.floor(x / PLACEMENT_GRID_CELL_SIZE);
 	const cellZ = Math.floor(z / PLACEMENT_GRID_CELL_SIZE);
+	const finePlacement = isFinePlacement(kind);
 	for (
 		let dzCell = -PLACEMENT_GRID_RADIUS;
 		dzCell <= PLACEMENT_GRID_RADIUS;
@@ -370,10 +386,9 @@ function isFarEnough(
 				if (index >= placements.length) continue;
 				const otherKind = placements.kindAt(index);
 				const otherRule = ruleFor(otherKind);
-				const bothFine =
-					isFinePlacement(kind) && isFinePlacement(otherKind);
-				const oneFine =
-					isFinePlacement(kind) || isFinePlacement(otherKind);
+				const otherFinePlacement = isFinePlacement(otherKind);
+				const bothFine = finePlacement && otherFinePlacement;
+				const oneFine = finePlacement || otherFinePlacement;
 				const spacingFactor = bothFine ? 0.68 : oneFine ? 0.38 : 0.55;
 				const required =
 					Math.max(minimumDistance, otherRule.minDistance) *
@@ -523,6 +538,10 @@ function generateForestPlacementsInternal(
 		y: 1,
 		z: 0,
 	};
+	const featureScratch: GroundFeatureScratch = {
+		biome: { meadow: 0, forest: 0, rocky: 0 },
+		path: createGroundPathParameters(world.seed),
+	};
 	const fieldsScratch: TerrainFields = {
 		path: 0,
 		grove: 0,
@@ -577,6 +596,7 @@ function generateForestPlacementsInternal(
 				x,
 				z,
 				surfaceScratch,
+				featureScratch,
 				fieldsScratch,
 			);
 			if (!isValidGround(world, rule.kind, x, z, fields)) continue;
@@ -640,6 +660,7 @@ function generateForestPlacementsInternal(
 		targetCount,
 		densityRandom,
 		surfaceScratch,
+		featureScratch,
 		fieldsScratch,
 	);
 }
@@ -677,6 +698,7 @@ function fillPlacementBudget(
 	targetCount: number,
 	random: RandomSource,
 	surfaceScratch: WorldSurfaceSample,
+	featureScratch: GroundFeatureScratch,
 	fieldsScratch: TerrainFields,
 ): void {
 	for (
@@ -700,9 +722,11 @@ function fillPlacementBudget(
 			x,
 			z,
 			surfaceScratch,
+			featureScratch,
 			fieldsScratch,
 		);
-		const candidates = fillerKinds(fields, random);
+		const biome = biomeFor(fields);
+		const candidates = fillerKinds(biome, random);
 		let kind: ForestPlacementKind | undefined;
 		for (const candidate of candidates) {
 			if (isValidGround(world, candidate, x, z, fields)) {
@@ -712,7 +736,6 @@ function fillPlacementBudget(
 		}
 		if (!kind) continue;
 		const rule = ruleFor(kind);
-		const biome = biomeFor(fields);
 		const rotationY = random.next() * TAU;
 		const scale = randomBetween(random, rule.minScale, rule.maxScale);
 		const variant = Math.floor(random.next() * 100_000);
@@ -745,10 +768,9 @@ function fillPlacementBudget(
 }
 
 function fillerKinds(
-	fields: TerrainFields,
+	biome: ForestBiome,
 	random: RandomSource,
 ): readonly ForestPlacementKind[] {
-	const biome = biomeFor(fields);
 	if (biome === 'rocky')
 		return random.next() < 0.58 ? ROCKY_FILLERS[0] : ROCKY_FILLERS[1];
 	if (biome === 'forest')

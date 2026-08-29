@@ -1,7 +1,13 @@
-import { Mesh, VertexData } from '@babylonjs/core';
-import type { Scene, StandardMaterial } from '@babylonjs/core';
-import { TERRAIN_SUBDIVISIONS_PER_CELL } from '@transcendence/game-shared';
-import type { World } from '@transcendence/game-shared';
+import {
+	Mesh,
+	VertexData,
+	type Scene,
+	type StandardMaterial,
+} from '@babylonjs/core';
+import {
+	TERRAIN_SUBDIVISIONS_PER_CELL,
+	type World,
+} from '@transcendence/game-shared';
 import { GROUND_TEXTURE_WORLD_SIZE } from './ProceduralGroundTexture';
 import {
 	generateTerrainSurface,
@@ -135,8 +141,10 @@ export function buildChunkMesh(
 			positions[positionIndex + 1] = surfaceData.heights[index]!;
 			positions[positionIndex + 2] = z;
 			normals[positionIndex] = surfaceData.normals[positionIndex]!;
-			normals[positionIndex + 1] = surfaceData.normals[positionIndex + 1]!;
-			normals[positionIndex + 2] = surfaceData.normals[positionIndex + 2]!;
+			normals[positionIndex + 1] =
+				surfaceData.normals[positionIndex + 1]!;
+			normals[positionIndex + 2] =
+				surfaceData.normals[positionIndex + 2]!;
 			uvs[localIndex] =
 				(originX + x + textureOffset) / GROUND_TEXTURE_WORLD_SIZE;
 			uvs[localIndex + 1] =

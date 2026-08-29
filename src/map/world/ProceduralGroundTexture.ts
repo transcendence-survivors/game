@@ -1,6 +1,10 @@
 import * as BABYLON from '@babylonjs/core';
 import { lerp } from '@transcendence/game-shared';
-import { groundBiomeWeights, groundPathFactor } from './GroundFeatures';
+import {
+	createGroundPathParameters,
+	groundBiomeWeights,
+	groundPathFactor,
+} from './GroundFeatures';
 import { fbm2d, smoothstep } from './ProceduralNoise';
 
 /** Texture resolution in pixels. */
@@ -16,19 +20,19 @@ function channel(value: number): number {
  * Makes the grass and ochre cracked path in CPU memory so it works without a
  * canvas or an external image asset. Coordinates are centred on world origin.
  */
-export function createProceduralGroundTexture(
-	scene: BABYLON.Scene,
-	seed: number,
-): BABYLON.RawTexture {
+export function createProceduralGroundTextureData(seed: number): Uint8Array {
 	const size = GROUND_TEXTURE_SIZE;
 	const worldScale = GROUND_TEXTURE_WORLD_SIZE / size;
 	const data = new Uint8Array(size * size * 4);
+	const biomeScratch = { meadow: 0, forest: 0, rocky: 0 };
+	const pathParameters = createGroundPathParameters(seed);
+	let index = 0;
 
 	for (let py = 0; py < size; py++) {
 		for (let px = 0; px < size; px++) {
 			const x = (px + 0.5 - size * 0.5) * worldScale;
 			const z = (py + 0.5 - size * 0.5) * worldScale;
-			const biome = groundBiomeWeights(x, z, seed);
+			const biome = groundBiomeWeights(x, z, seed, biomeScratch);
 			const grassVariation = fbm2d(
 				x * 0.035,
 				z * 0.035,
@@ -39,39 +43,13 @@ export function createProceduralGroundTexture(
 				z * 0.14 - 9,
 				seed ^ 0xa5a5a5a5,
 			);
-			const path = groundPathFactor(x, z, seed);
+			const path = groundPathFactor(x, z, seed, pathParameters);
 			const pathVariation = fbm2d(
 				x * 0.055 - 3,
 				z * 0.055 + 11,
 				seed ^ 0x3c6ef372,
 			);
 
-			const meadow = [
-				82 + grassVariation * 20 + fineVariation * 8,
-				172 + grassVariation * 29 + fineVariation * 13,
-				58 + grassVariation * 15 + fineVariation * 7,
-			];
-			const forest = [
-				34 + grassVariation * 11 + fineVariation * 5,
-				108 + grassVariation * 24 + fineVariation * 10,
-				36 + grassVariation * 10 + fineVariation * 5,
-			];
-			const rocky = [
-				124 + grassVariation * 18 + fineVariation * 6,
-				137 + grassVariation * 20 + fineVariation * 8,
-				88 + grassVariation * 14 + fineVariation * 6,
-			];
-			const ground = [0, 1, 2].map(
-				(channelIndex) =>
-					meadow[channelIndex] * biome.meadow +
-					forest[channelIndex] * biome.forest +
-					rocky[channelIndex] * biome.rocky,
-			);
-			const dirt = [
-				171 + pathVariation * 26 + fineVariation * 5,
-				133 + pathVariation * 23 + fineVariation * 8,
-				55 + pathVariation * 15 + fineVariation * 5,
-			];
 			const crackWarp = fbm2d(x * 0.045 + 29, z * 0.045 - 7, seed);
 			const crackA =
 				1 -
@@ -92,21 +70,55 @@ export function createProceduralGroundTexture(
 				smoothstep(0.3, 0.82, path) *
 				(0.55 + 0.45 * (fineVariation * 0.5 + 0.5));
 
-			const index = (py * size + px) * 4;
-			for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
-				const blended = lerp(
-					ground[channelIndex],
-					dirt[channelIndex],
+			const shade = 1 - cracks * 0.42;
+			const groundR =
+				(82 + grassVariation * 20 + fineVariation * 8) * biome.meadow +
+				(34 + grassVariation * 11 + fineVariation * 5) * biome.forest +
+				(124 + grassVariation * 18 + fineVariation * 6) * biome.rocky;
+			const groundG =
+				(172 + grassVariation * 29 + fineVariation * 13) *
+					biome.meadow +
+				(108 + grassVariation * 24 + fineVariation * 10) *
+					biome.forest +
+				(137 + grassVariation * 20 + fineVariation * 8) * biome.rocky;
+			const groundB =
+				(58 + grassVariation * 15 + fineVariation * 7) * biome.meadow +
+				(36 + grassVariation * 10 + fineVariation * 5) * biome.forest +
+				(88 + grassVariation * 14 + fineVariation * 6) * biome.rocky;
+			data[index] = channel(
+				lerp(
+					groundR,
+					171 + pathVariation * 26 + fineVariation * 5,
 					path,
-				);
-				data[index + channelIndex] = channel(
-					blended * (1 - cracks * 0.42),
-				);
-			}
+				) * shade,
+			);
+			data[index + 1] = channel(
+				lerp(
+					groundG,
+					133 + pathVariation * 23 + fineVariation * 8,
+					path,
+				) * shade,
+			);
+			data[index + 2] = channel(
+				lerp(
+					groundB,
+					55 + pathVariation * 15 + fineVariation * 5,
+					path,
+				) * shade,
+			);
 			data[index + 3] = 255;
+			index += 4;
 		}
 	}
+	return data;
+}
 
+export function createProceduralGroundTexture(
+	scene: BABYLON.Scene,
+	seed: number,
+): BABYLON.RawTexture {
+	const size = GROUND_TEXTURE_SIZE;
+	const data = createProceduralGroundTextureData(seed);
 	const texture = BABYLON.RawTexture.CreateRGBATexture(
 		data,
 		size,

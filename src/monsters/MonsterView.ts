@@ -27,8 +27,6 @@ import {
 	type MonsterPresentationState,
 } from './MonsterPresentation';
 
-export type MonsterAnimation = MonsterPresentationAnimation;
-
 const BODY_HIDE_MARGIN = 0.4;
 const BODY_SHOW_MARGIN = 1.6;
 
@@ -58,8 +56,8 @@ export function semanticAnimationName(name: string): string {
 }
 
 export function animationTransitionDelay(
-	current: MonsterAnimation | null,
-	next: MonsterAnimation,
+	current: MonsterPresentationAnimation | null,
+	next: MonsterPresentationAnimation,
 ): number {
 	return current === 'attack' && next !== 'attack' ? ATTACK_EXIT_DELAY_S : 0;
 }
@@ -89,7 +87,7 @@ export class MonsterView {
 		string,
 		StaticAnimationPose
 	>();
-	private currentAnimation: MonsterAnimation | null = null;
+	private currentAnimation: MonsterPresentationAnimation | null = null;
 	private renderEnabled = true;
 	private readonly target = { x: 0, z: 0, rotationY: 0 };
 	private animationState: Exclude<
@@ -443,7 +441,7 @@ export class MonsterView {
 	}
 
 	play(
-		animation: MonsterAnimation,
+		animation: MonsterPresentationAnimation,
 		loop: boolean = true,
 		animationTimeS?: number,
 	) {
@@ -461,7 +459,7 @@ export class MonsterView {
 	}
 
 	private sampleAnimation(
-		animation: MonsterAnimation,
+		animation: MonsterPresentationAnimation,
 		timeS: number,
 		loop = true,
 	): void {

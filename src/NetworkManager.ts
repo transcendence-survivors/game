@@ -2,11 +2,12 @@ import { Client } from '@colyseus/sdk';
 import {
 	GAME_ROOM_TYPE,
 	normalizeRoomName,
+	type GameRoomOptions,
 	type GameState,
 } from '@transcendence/game-shared';
 
 export class NetworkManager {
-	private client!: Client;
+	private readonly client: Client;
 
 	constructor() {
 		const host = window.location.hostname;
@@ -14,14 +15,22 @@ export class NetworkManager {
 	}
 
 	createRoom(rawName: string) {
-		const roomName = normalizeRoomName(rawName);
-		if (!roomName) throw new Error('Empty room name');
-		return this.client.create<GameState>(GAME_ROOM_TYPE, { roomName });
+		return this.client.create<GameState>(
+			GAME_ROOM_TYPE,
+			this.roomOptions(rawName),
+		);
 	}
 
 	joinRoomByName(rawName: string) {
+		return this.client.join<GameState>(
+			GAME_ROOM_TYPE,
+			this.roomOptions(rawName),
+		);
+	}
+
+	private roomOptions(rawName: string): GameRoomOptions {
 		const roomName = normalizeRoomName(rawName);
 		if (!roomName) throw new Error('Empty room name');
-		return this.client.join<GameState>(GAME_ROOM_TYPE, { roomName });
+		return { roomName };
 	}
 }
