@@ -5,7 +5,9 @@ let engine: BABYLON.Engine | null = null;
 let handleResize: (() => void) | null = null;
 
 export async function initGame(canvas: HTMLCanvasElement) {
-	engine = new BABYLON.Engine(canvas);
+	// Preserve native antialiasing for the default visual profile. The scene
+	// keeps its batched/culling optimizations independently of MSAA.
+	engine = new BABYLON.Engine(canvas, true);
 	SceneManager.init(engine);
 	await SceneManager.toMainMenu();
 	SceneManager.start();
