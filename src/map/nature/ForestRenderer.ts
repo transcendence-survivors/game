@@ -32,7 +32,7 @@ interface ChunkCandidate extends Vec2d {
 	distance: number;
 }
 
-interface SupportPoint extends Vec3d {}
+type SupportPoint = Vec3d;
 
 interface SupportMetadata {
 	readonly points: readonly SupportPoint[];

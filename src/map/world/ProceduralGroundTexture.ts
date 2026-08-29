@@ -1,4 +1,5 @@
 import * as BABYLON from '@babylonjs/core';
+import { lerp } from '@transcendence/game-shared';
 import { groundBiomeWeights, groundPathFactor } from './GroundFeatures';
 import { fbm2d, smoothstep } from './ProceduralNoise';
 
@@ -6,10 +7,6 @@ import { fbm2d, smoothstep } from './ProceduralNoise';
 const GROUND_TEXTURE_SIZE = 512;
 /** World-space size covered before the texture repeats. */
 export const GROUND_TEXTURE_WORLD_SIZE = 1024;
-
-function lerp(a: number, b: number, t: number): number {
-	return a + (b - a) * t;
-}
 
 function channel(value: number): number {
 	return Math.max(0, Math.min(255, Math.round(value)));
