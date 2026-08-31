@@ -1,11 +1,11 @@
 import * as GUI from '@babylonjs/gui';
 import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState } from '../../shared-package/src';
-import { guiImports } from './assets/ui';
+import type { GameState } from '../../../shared-package/src';
+import { guiImports } from '../assets/ui';
 import { SceneManager } from './SceneManager';
-import type { PlayerStats } from '../../shared-package/src/schemas/GameState';
-import { iconsImport } from './assets/icons';
+import type { PlayerStats } from '../../../shared-package/src/schemas/GameState';
+import { iconsImport } from '../assets/icons';
 
 interface StatDef {
 	key: keyof PlayerStats;

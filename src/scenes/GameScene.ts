@@ -2,10 +2,10 @@ import type { Engine, Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
 import '@babylonjs/loaders/glTF/2.0';
-import { InputManager } from '../InputManager';
+import { InputManager } from '../server/InputManager';
 import { MapGenerator } from '../map/MapGenerator';
-import { DebugMenu } from '../DebugMenu';
-import { ServerOrchestrator } from '../ServerOrchestrator';
+import { DebugMenu } from '../hud/DebugMenu';
+import { ServerOrchestrator } from '../server/ServerOrchestrator';
 import { MonsterRenderer } from '../monsters';
 
 import {
@@ -20,7 +20,7 @@ import {
 import { SettingsMenuRender } from '../settings/SettingsMenuRender';
 import { models } from '../assets/models';
 import { Hud } from '../hud/Hud';
-import { LevelUpMenu } from '../LevelUpMenu';
+import { LevelUpMenu } from '../hud/LevelUpMenu';
 import { groundHeightUnderHitbox } from '../../../shared-package/src/gameplay/Collisions';
 //TODO FIX THE @module bug
 

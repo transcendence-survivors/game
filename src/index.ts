@@ -1,5 +1,5 @@
 import * as BABYLON from '@babylonjs/core';
-import { SceneManager } from './SceneManager';
+import { SceneManager } from './scenes/SceneManager';
 
 let engine: BABYLON.Engine | null = null;
 let handleResize: (() => void) | null = null;

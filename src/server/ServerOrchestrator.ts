@@ -1,7 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import * as COLYSEUS from '@colyseus/sdk';
-import { MapGenerator } from './map/MapGenerator';
-import type { AuraInstance } from './map/effects/PlayerAuraPlugin';
+import { MapGenerator } from '../map/MapGenerator';
+import type { AuraInstance } from '../map/effects/PlayerAuraPlugin';
 import {
 	applyHorizontalMovement,
 	applyVerticalMovement,
@@ -9,11 +9,11 @@ import {
 	type GameState,
 	type MoveInput,
 	type MovementState,
-} from '../../shared-package/src';
+} from '../../../shared-package/src';
 
-import { models } from './assets/models';
-import { SceneManager } from './SceneManager';
-import { groundHeightUnderHitbox } from '../../shared-package/src/gameplay/Collisions';
+import { models } from '../assets/models';
+import { SceneManager } from '../scenes/SceneManager';
+import { groundHeightUnderHitbox } from '../../../shared-package/src/gameplay/Collisions';
 
 export class ServerOrchestrator {
 	private scene!: BABYLON.Scene;

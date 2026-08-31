@@ -1,9 +1,9 @@
 import type { Scene } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
-import { guiImports } from './assets/ui';
+import { guiImports } from '../assets/ui';
 import type { Room } from '@colyseus/sdk';
-import type { UpgradeOption } from '../../shared-package/src/utils/Types';
-import { iconsImport } from './assets/icons';
+import type { UpgradeOption } from '../../../shared-package/src/utils/Types';
+import { iconsImport } from '../assets/icons';
 
 export class LevelUpMenu {
 	private scene: Scene;

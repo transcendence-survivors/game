@@ -1,9 +1,9 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState, Player } from '../../shared-package/src';
-import { iconsImport } from './assets/icons';
-import { guiImports } from './assets/ui';
+import type { GameState, Player } from '../../../shared-package/src';
+import { iconsImport } from '../assets/icons';
+import { guiImports } from '../assets/ui';
 import { SceneManager } from './SceneManager';
 
 export class WaitingScreen {

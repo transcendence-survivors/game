@@ -1,7 +1,7 @@
 import type { Engine, Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
-import { SceneManager } from '../SceneManager';
+import { SceneManager } from './SceneManager';
 import { guiImports } from '../assets/ui';
 
 export class MainMenuScene {

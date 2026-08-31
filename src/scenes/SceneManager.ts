@@ -1,9 +1,9 @@
 import { type Engine } from '@babylonjs/core';
-import { MainMenuScene } from './scenes/MainMenuScene';
-import { GameScene } from './scenes/GameScene';
-import { LobbyScene } from './scenes/LobbyScene';
+import { MainMenuScene } from './MainMenuScene';
+import { GameScene } from './GameScene';
+import { LobbyScene } from './LobbyScene';
 import * as COLYSEUS from '@colyseus/sdk';
-import type { GameState } from '../../shared-package/src';
+import type { GameState } from '../../../shared-package/src';
 import { EndingScreen } from './EndingScreen';
 import { WaitingScreen } from './WaitingScreen';
 

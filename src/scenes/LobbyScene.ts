@@ -1,8 +1,8 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import { NetworkManager } from '../NetworkManager';
-import { SceneManager } from '../SceneManager';
+import { NetworkManager } from '../server/NetworkManager';
+import { SceneManager } from './SceneManager';
 import type { GameState } from '../../../shared-package/src';
 import { guiImports } from '../assets/ui';
 
