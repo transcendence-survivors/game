@@ -28,7 +28,6 @@ import {
 import { models } from '../assets/models';
 import { Hud } from '../hud/Hud';
 import { LevelUpMenu } from '../hud/LevelUpMenu';
-import { groundHeightUnderHitbox } from '../../../shared-package/src/gameplay/Collisions';
 
 import {
 	DEFAULT_KEY_BINDINGS,

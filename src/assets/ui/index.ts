@@ -5,7 +5,7 @@ export const guiImports = {
 	lobby: new URL('./lobby_ui.json', import.meta.url).href,
 	main: new URL('./main_menu.json', import.meta.url).href,
 	settings: new URL('./settings_menu.json', import.meta.url).href,
-	levelup: new URL('./levelup_ui.json', import.meta.url).href,
+	// levelup: new URL('./levelup_ui.json', import.meta.url).href,
 	endingScreen: new URL('./ending_screen.json', import.meta.url).href,
 	waitingScreen: new URL('./waiting_room_ui.json', import.meta.url).href,
 } as const;
@@ -15,8 +15,6 @@ export function createFullscreenUi(
 	scene?: Scene,
 ): GUI.AdvancedDynamicTexture {
 	const ui = GUI.AdvancedDynamicTexture.CreateFullscreenUI(name, true, scene);
-	// Fullscreen UI must be composited after camera post-processes. Otherwise
-	// world effects such as the radial lighting fog also darken the HUD.
 	const layer = ui.layer;
 	if (layer) layer.applyPostProcess = false;
 	ui.idealWidth = 1920;

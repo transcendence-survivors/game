@@ -16,6 +16,9 @@ export class WaitingScreen {
 	constructor(engine: BABYLON.Engine, room: COLYSEUS.Room<GameState>) {
 		this.engine = engine;
 		this.room = room;
+		this.room.onMessage('gameStart', ({ seed }: { seed: number }) =>
+			SceneManager.toGame(this.room, seed),
+		);
 		this.scene = new BABYLON.Scene(this.engine);
 		new BABYLON.FreeCamera(
 			'EndingScreenCam',
@@ -39,9 +42,6 @@ export class WaitingScreen {
 		this.advTex.idealHeight = 1080;
 		this.advTex.renderAtIdealSize = true;
 		await this.advTex.parseFromURLAsync(guiImports.waitingScreen);
-		this.room.onMessage('gameStart', ({ seed }: { seed: number }) =>
-			SceneManager.toGame(this.room, seed),
-		);
 		this.fillData();
 		this.connectButton();
 	}

@@ -18,18 +18,18 @@ import {
 	createMovementState,
 } from '@transcendence/game-shared';
 
-import type { ModelAssetLibrary } from './assets/ModelAssetLibrary';
+import type { ModelAssetLibrary } from '../assets/ModelAssetLibrary';
 import {
 	createPlayerAnimationController,
 	type PlayerAnimationController,
-} from './assets/PlayerAnimation';
-import { models } from './assets/models';
-import { SceneManager } from './SceneManager';
-import { CombatRenderer } from './combat/CombatRenderer';
-import { CombatAssetLibrary } from './combat/CombatAssetLibrary';
-import { WeaponAttachmentRenderer } from './combat/WeaponAttachmentRenderer';
-import { AsyncViewRegistry } from './combat/AsyncViewRegistry';
-import { CleanupBag, CleanupRegistry } from './CleanupBag';
+} from '../assets/PlayerAnimation';
+import { models } from '../assets/models';
+import { SceneManager } from '../scenes/SceneManager';
+import { CombatRenderer } from '../combat/CombatRenderer';
+import { CombatAssetLibrary } from '../combat/CombatAssetLibrary';
+import { WeaponAttachmentRenderer } from '../combat/WeaponAttachmentRenderer';
+import { AsyncViewRegistry } from '../combat/AsyncViewRegistry';
+import { CleanupBag, CleanupRegistry } from '../CleanupBag';
 
 class RemotePlayerView {
 	readonly mesh: BABYLON.AbstractMesh;

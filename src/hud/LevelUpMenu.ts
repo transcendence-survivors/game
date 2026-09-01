@@ -1,6 +1,6 @@
 import type { Scene } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
-import { createFullscreenUi } from './assets/ui';
+import { createFullscreenUi } from '../assets/ui';
 import type { Room } from '@colyseus/sdk';
 import {
 	ClientMessage,
@@ -9,9 +9,9 @@ import {
 	UPGRADE_CHOICE_COUNT,
 	type UpgradeOption,
 } from '@transcendence/game-shared';
-import { iconsImport } from './assets/icons';
-import { CleanupBag } from './CleanupBag';
-import { HUD_THEME, hudText, styleHudPanel } from './hud/HudTheme';
+import { iconsImport } from '../assets/icons';
+import { CleanupBag } from '../CleanupBag';
+import { HUD_THEME, hudText, styleHudPanel } from '../hud/HudTheme';
 
 interface UpgradeCardControls {
 	panel: GUI.Rectangle;

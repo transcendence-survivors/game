@@ -1,8 +1,8 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import { NetworkManager } from '../NetworkManager';
-import { SceneManager } from '../SceneManager';
+import { NetworkManager } from '../server/NetworkManager';
+import { SceneManager } from '../scenes/SceneManager';
 import { normalizeRoomName, type GameState } from '@transcendence/game-shared';
 import { createFullscreenUi, getGuiControls, guiImports } from '../assets/ui';
 
@@ -97,22 +97,7 @@ export class LobbyScene {
 			}
 		};
 
-		joinButton.onPointerUpObservable.add(async () => {
-			const roomName = getRoomName();
-			if (!roomName) return;
-			setBusy(true);
-			setStatus('Joining room...');
-			try {
-				this.room = await this.network.joinRoomByName(roomName);
-				setStatus(`Joined "${roomName}"`);
-				setBusy(false);
-				if (this.room) {
-					await SceneManager.toWaiting(this.room);
-				}
-			} catch (error) {
-				console.log(error);
-				setStatus('Failed to join room');
-			}
-		});
+		createButton.onPointerUpObservable.add(() => enterRoom(true));
+		joinButton.onPointerUpObservable.add(() => enterRoom(false));
 	}
 }

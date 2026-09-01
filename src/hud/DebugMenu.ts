@@ -1,10 +1,10 @@
 import * as GUI from '@babylonjs/gui';
 import * as BABYLON from '@babylonjs/core';
 import { MONSTER_DIRECTOR_CONFIG } from '@transcendence/game-shared';
-import { createFullscreenUi } from './assets/ui';
-import { HUD_THEME, hudText, styleHudPanel } from './hud/HudTheme';
-import type { MonsterRendererStats } from './monsters/MonsterRenderer';
-import { FrameTimeHistory } from './performance/FrameTimeHistory';
+import { createFullscreenUi } from '../assets/ui';
+import { HUD_THEME, hudText, styleHudPanel } from '../hud/HudTheme';
+import type { MonsterRendererStats } from '../monsters/MonsterRenderer';
+import { FrameTimeHistory } from '../performance/FrameTimeHistory';
 
 const FRAME_TIME_WINDOW_MS = 60_000;
 const GPU_NANOSECONDS_TO_MILLISECONDS = 1_000_000;
