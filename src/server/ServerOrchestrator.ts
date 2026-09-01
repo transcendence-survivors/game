@@ -267,7 +267,7 @@ export class ServerOrchestrator {
 				if (this.gameOverHandled) return;
 				this.gameOverHandled = true;
 				document.exitPointerLock();
-				SceneManager.toLobby();
+				SceneManager.toEndScreen(this.room);
 			}),
 		);
 	}
