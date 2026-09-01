@@ -248,36 +248,20 @@ export class ServerOrchestrator {
 		this.remoteTargets.delete(sessionId);
 	}
 
-	async connect() {
-		await new Promise<void>((resolve) => {
-			let unsubscribe: (() => void) | undefined;
-			unsubscribe = this.room.onMessage(
-				ServerMessage.WorldSeed,
-				({ seed }: WorldSeedMessage) => {
-					unsubscribe?.();
-					this.mapGen = new MapGenerator(this.scene, seed);
-					this.combatAssets = new CombatAssetLibrary(
-						this.scene,
-						this.mapGen,
-					);
-					this.weaponAttachments = new WeaponAttachmentRenderer(
-						this.combatAssets,
-					);
-					this.combatRenderer = new CombatRenderer(
-						this.scene,
-						this.room,
-						this.combatAssets,
-						this.weaponAttachments,
-					);
-					this.combatRenderer.listen();
-					this.combatRenderer.setHitboxesVisible(
-						this.combatHitboxesVisible,
-					);
-					resolve();
-				},
-			);
-			this.subscriptions.add(unsubscribe);
-		});
+	async connect(seed: number) {
+		this.mapGen = new MapGenerator(this.scene, seed);
+		this.combatAssets = new CombatAssetLibrary(this.scene, this.mapGen);
+		this.weaponAttachments = new WeaponAttachmentRenderer(
+			this.combatAssets,
+		);
+		this.combatRenderer = new CombatRenderer(
+			this.scene,
+			this.room,
+			this.combatAssets,
+			this.weaponAttachments,
+		);
+		this.combatRenderer.listen();
+		this.combatRenderer.setHitboxesVisible(this.combatHitboxesVisible);
 		this.subscriptions.add(
 			this.room.onMessage(ServerMessage.GameOver, () => {
 				if (this.gameOverHandled) return;

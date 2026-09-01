@@ -110,7 +110,7 @@ export class GameScene {
 			this.server = this.track(
 				new ServerOrchestrator(this.scene, room, this.playerAssets),
 			);
-			const seedReady = this.server.connect();
+			const seedReady = this.server.connect(seed);
 			this.settings = this.track(
 				new SettingsMenuRender(this.scene, this.camera, this.keybinds),
 			);
