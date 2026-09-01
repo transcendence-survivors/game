@@ -111,12 +111,8 @@ export class GameScene {
 				new ServerOrchestrator(this.scene, room, this.playerAssets),
 			);
 			const seedReady = this.server.connect(seed);
-			this.settings = this.track(
-				new SettingsMenuRender(this.scene, this.camera, this.keybinds),
-			);
-			await this.settings.ready;
+
 			if (this.disposed) return;
-			this.settings.close();
 			const urlParams = new URLSearchParams(window.location.search);
 			this.debugMenu = this.track(
 				new DebugMenu(
@@ -164,6 +160,11 @@ export class GameScene {
 
 			this.hud = this.track(new Hud(this.scene, room));
 			this.track(new LevelUpMenu(this.scene, room));
+			this.settings = this.track(
+				new SettingsMenuRender(this.scene, this.camera, this.keybinds),
+			);
+			await this.settings.ready;
+			this.settings.close();
 			music.play();
 			this.renderLoop();
 		} catch (e) {

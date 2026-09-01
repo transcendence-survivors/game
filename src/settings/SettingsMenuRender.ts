@@ -47,6 +47,10 @@ export class SettingsMenuRender {
 
 	async init() {
 		this.advTex = createFullscreenUi('SettingsUi', this.scene);
+		const canvas = this.advTex.getContext().canvas;
+		if (canvas instanceof HTMLCanvasElement) {
+			canvas.style.zIndex = '1000';
+		}
 		await this.advTex.parseFromURLAsync(guiImports.settings);
 		this.advTex.rootContainer.isVisible = false;
 		this.updatePointerEvents();
