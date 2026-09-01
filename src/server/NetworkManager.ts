@@ -1,37 +1,36 @@
 import { Client } from '@colyseus/sdk';
-import type { GameState } from '../../shared-package/src';
+import {
+	GAME_ROOM_TYPE,
+	normalizeRoomName,
+	type GameRoomOptions,
+	type GameState,
+} from '@transcendence/game-shared';
 
 export class NetworkManager {
-	private client!: Client;
+	private readonly client: Client;
 
 	constructor() {
 		const host = window.location.hostname;
 		this.client = new Client(`ws://${host}:4000`);
 	}
 
-	normalize(name: string) {
-		return name.trim().toLowerCase();
+	createRoom(rawName: string) {
+		return this.client.create<GameState>(
+			GAME_ROOM_TYPE,
+			this.roomOptions(rawName),
+		);
 	}
 
-	async createRoom(rawName: string) {
-		const roomName = this.normalize(rawName);
-		if (!roomName) throw new Error('Empty room name');
-		try {
-			return await this.client.create<GameState>('game_room', {
-				roomName,
-			});
-		} catch (error) {
-			throw error;
-		}
+	joinRoomByName(rawName: string) {
+		return this.client.join<GameState>(
+			GAME_ROOM_TYPE,
+			this.roomOptions(rawName),
+		);
 	}
 
-	async joinRoomByName(rawName: string) {
-		const roomName = this.normalize(rawName);
+	private roomOptions(rawName: string): GameRoomOptions {
+		const roomName = normalizeRoomName(rawName);
 		if (!roomName) throw new Error('Empty room name');
-		try {
-			return await this.client.join<GameState>('game_room', { roomName });
-		} catch (error) {
-			throw error;
-		}
+		return { roomName };
 	}
 }

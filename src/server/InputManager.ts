@@ -6,9 +6,9 @@ import {
 } from '@babylonjs/core';
 
 export class InputManager {
-	private scene: Scene;
-	private keys = new Map<string, boolean>();
-	private keyboardObserver: Observer<KeyboardInfo>;
+	private readonly scene: Scene;
+	private readonly keys = new Map<string, boolean>();
+	private readonly keyboardObserver: Observer<KeyboardInfo>;
 
 	constructor(scene: Scene) {
 		this.scene = scene;
@@ -27,14 +27,8 @@ export class InputManager {
 		return this.keys.get(key.toLowerCase()) === true;
 	}
 
-	isReleased(key: string) {
-		return this.keys.get(key.toLowerCase()) === false;
-	}
-
 	dispose() {
-		if (this.keyboardObserver) {
-			this.scene.onKeyboardObservable.remove(this.keyboardObserver);
-		}
+		this.scene.onKeyboardObservable.remove(this.keyboardObserver);
 		this.keys.clear();
 	}
 }

@@ -1,10 +1,17 @@
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import * as COLYSEUS from '@colyseus/sdk';
-import { NetworkManager } from '../server/NetworkManager';
-import { SceneManager } from './SceneManager';
-import type { GameState } from '../../../shared-package/src';
-import { guiImports } from '../assets/ui';
+import { NetworkManager } from '../NetworkManager';
+import { SceneManager } from '../SceneManager';
+import { normalizeRoomName, type GameState } from '@transcendence/game-shared';
+import { createFullscreenUi, getGuiControls, guiImports } from '../assets/ui';
+
+interface LobbyControls {
+	input: GUI.InputText;
+	createButton: GUI.Button;
+	joinButton: GUI.Button;
+	status: GUI.TextBlock;
+}
 
 export class LobbyScene {
 	private scene: BABYLON.Scene;
@@ -21,23 +28,12 @@ export class LobbyScene {
 		this.ready = this.show();
 	}
 
-	getScene() {
-		return this.scene;
-	}
-
-	async render() {
+	render() {
 		this.scene.render();
 	}
 
 	async show() {
-		this.advTex = GUI.AdvancedDynamicTexture.CreateFullscreenUI(
-			'LobbyUi',
-			true,
-			this.scene,
-		);
-		this.advTex.idealWidth = 1920;
-		this.advTex.idealHeight = 1080;
-		this.advTex.renderAtIdealSize = true;
+		this.advTex = createFullscreenUi('LobbyUi', this.scene);
 		await this.advTex.parseFromURLAsync(guiImports.lobby);
 		this.linkControls();
 	}
@@ -47,36 +43,17 @@ export class LobbyScene {
 		this.scene.dispose();
 	}
 
-	getRoom() {
-		return this.room;
-	}
-
 	private linkControls() {
-		const input = this.advTex.getControlByName(
-			'RoomNameInput',
-		) as GUI.InputText;
-		const createButton = this.advTex.getControlByName(
-			'ButtonCreate',
-		) as GUI.Button;
-		const joinButton = this.advTex.getControlByName(
-			'ButtonJoin',
-		) as GUI.Button;
-		const status = this.advTex.getControlByName(
-			'StatusText',
-		) as GUI.TextBlock;
-
-		if (!createButton || !joinButton || !status || !input) {
-			console.error('Missing constrols from lobby.json', {
-				input,
-				createButton,
-				joinButton,
-				status,
+		const { input, createButton, joinButton, status } =
+			getGuiControls<LobbyControls>(this.advTex, {
+				input: 'RoomNameInput',
+				createButton: 'ButtonCreate',
+				joinButton: 'ButtonJoin',
+				status: 'StatusText',
 			});
-			return;
-		}
 
 		const setStatus = (text: string) => {
-			if (status) status.text = text;
+			status.text = text;
 		};
 
 		const setBusy = (busy: boolean) => {
@@ -86,7 +63,7 @@ export class LobbyScene {
 		};
 
 		const getRoomName = () => {
-			const roomName = input.text.trim().toLowerCase();
+			const roomName = normalizeRoomName(input.text);
 			if (!roomName) {
 				setStatus('Please enter a room name');
 				return null;
@@ -94,23 +71,31 @@ export class LobbyScene {
 			return roomName;
 		};
 
-		createButton.onPointerUpObservable.add(async () => {
+		const enterRoom = async (create: boolean) => {
 			const roomName = getRoomName();
 			if (!roomName) return;
 			setBusy(true);
-			setStatus('Creating room...');
+			setStatus(create ? 'Creating room...' : 'Joining room...');
 			try {
-				this.room = await this.network.createRoom(roomName);
-				setStatus(`Room "${roomName}" created`);
+				this.room = create
+					? await this.network.createRoom(roomName)
+					: await this.network.joinRoomByName(roomName);
+				setStatus(
+					create
+						? `Room "${roomName}" created`
+						: `Joined "${roomName}"`,
+				);
 				setBusy(false);
 				if (this.room) {
 					await SceneManager.toWaiting(this.room);
 				}
 			} catch (error) {
-				console.log(error);
-				setStatus('Failed to create room');
+				console.error('Room connection failed', error);
+				setStatus(
+					create ? 'Failed to create room' : 'Failed to join room',
+				);
 			}
-		});
+		};
 
 		joinButton.onPointerUpObservable.add(async () => {
 			const roomName = getRoomName();

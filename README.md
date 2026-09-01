@@ -9,6 +9,10 @@ Client 3D **Babylon.js + Vite + Colyseus** pour Transcendence.
 - **colyseus.js 0.16** — client temps réel synchronisé.
 - **TypeScript strict** (`erasableSyntaxOnly` activé — pas de parameter properties).
 
+## Décor de la forêt
+
+Le client intègre une sélection du [Stylized Nature MegaKit](https://quaternius.com/packs/stylizednaturemegakit.html) sous forme de modèles `.glb` autoportés : arbres, rochers, buissons et végétation basse. `ForestPlacement` génère les placements à partir de la seed du monde et des coordonnées du chunk ; tous les clients obtiennent donc le même décor sans l’ajouter à l’état réseau. `ForestRenderer` charge les chunks de décor progressivement autour du joueur, les décharge hors zone et désactive les collisions/picking pour conserver le décor purement visuel.
+
 ## Principes d'architecture (branche `feat/core-architecture`)
 
 Le client est **purement présentation + input** :

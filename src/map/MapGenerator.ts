@@ -1,31 +1,41 @@
 import type { Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
-import { World, ChunkManager } from './world';
+import {
+	World,
+	ACCESS_RADIUS,
+	CHUNK_DISPLAY_RADIUS as SHARED_CHUNK_DISPLAY_RADIUS,
+} from '@transcendence/game-shared';
+import { ChunkManager } from './world/ChunkManager';
 import { SunRayVolumetric } from './effects/SunRayVolumetric';
+import { RadialLightingPostProcess } from './effects/RadialLightingPostProcess';
 import {
 	PlayerAuraPlugin,
 	type AuraInstance,
 } from './effects/PlayerAuraPlugin';
-import { ACCESS_RADIUS } from '../../../shared-package/src';
+import { createProceduralGroundTexture } from './world/ProceduralGroundTexture';
+import { WorldGenerationClient } from './world/WorldGenerationClient';
 
 export class MapGenerator {
 	readonly ZONE_RADIUS = ACCESS_RADIUS;
-	private readonly BEAM_LIGHT_H = 95;
+	readonly CHUNK_DISPLAY_RADIUS = SHARED_CHUNK_DISPLAY_RADIUS;
 
-	private scene: Scene;
-	private world!: World;
+	private readonly scene: Scene;
+	private readonly world: World;
+	private readonly generation: WorldGenerationClient;
 	private terrainMaterial!: BABYLON.StandardMaterial;
+	private terrainTexture!: BABYLON.RawTexture;
+	private terrainLight!: BABYLON.HemisphericLight;
 	private auraPlugin!: PlayerAuraPlugin;
 	private chunkManager!: ChunkManager;
 	private sunRay!: SunRayVolumetric;
-	private rayLight!: BABYLON.PointLight;
-	private shadowGen!: BABYLON.ShadowGenerator;
+	private radialLighting!: RadialLightingPostProcess;
 	private rayPos!: BABYLON.Vector3;
-	private zoneBoundary!: BABYLON.Mesh;
+	private raySynchronized = false;
 
 	constructor(scene: Scene, seed: number) {
 		this.scene = scene;
 		this.world = new World(seed);
+		this.generation = new WorldGenerationClient();
 		this.init();
 	}
 
@@ -40,47 +50,51 @@ export class MapGenerator {
 			'terrain',
 			this.scene,
 		);
+		this.terrainTexture = createProceduralGroundTexture(
+			this.scene,
+			this.world.seed,
+		);
+		this.terrainMaterial.diffuseTexture = this.terrainTexture;
 		this.terrainMaterial.diffuseColor = new BABYLON.Color3(1, 1, 1);
 		this.terrainMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+		this.terrainMaterial.disableLighting = false;
+		this.terrainMaterial.emissiveColor = new BABYLON.Color3(
+			0.08,
+			0.1,
+			0.05,
+		);
+		this.terrainLight = new BABYLON.HemisphericLight(
+			'terrainSun',
+			new BABYLON.Vector3(-0.45, 1, 0.25),
+			this.scene,
+		);
+		this.terrainLight.diffuse = BABYLON.Color3.FromHexString('#fff1c7');
+		this.terrainLight.groundColor = BABYLON.Color3.FromHexString('#26351e');
+		this.terrainLight.intensity = 0.9;
 		this.auraPlugin = new PlayerAuraPlugin(this.terrainMaterial);
 
 		const beamColor = new BABYLON.Color3(1.0, 0.9, 0.62);
 		const strikeY = this.world.height(0, 0);
 		this.rayPos = new BABYLON.Vector3(0, strikeY, 0);
 
-		this.rayLight = new BABYLON.PointLight(
-			'SunRayLight',
-			new BABYLON.Vector3(0, strikeY + this.BEAM_LIGHT_H, 0),
-			this.scene,
-		);
-		this.rayLight.diffuse = beamColor;
-		this.rayLight.specular = new BABYLON.Color3(0.2, 0.18, 0.12);
-		this.rayLight.intensity = 13;
-		this.rayLight.range = this.BEAM_LIGHT_H + this.ZONE_RADIUS - 40;
-		this.rayLight.falloffType = BABYLON.Light.FALLOFF_STANDARD;
-		this.shadowGen = new BABYLON.ShadowGenerator(2048, this.rayLight);
-		this.shadowGen.usePercentageCloserFiltering = true;
-		this.shadowGen.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
-		this.shadowGen.bias = 0.0016;
-		this.shadowGen.normalBias = 0.7;
-		this.shadowGen.setDarkness(0.12);
-		const shadowMap = this.shadowGen.getShadowMap();
-		if (shadowMap) shadowMap.refreshRate = 2;
-
 		this.chunkManager = new ChunkManager(
 			this.scene,
 			this.world,
 			this.terrainMaterial,
-			{
-				viewDistance: 4,
-				flat: true,
-				onChunk: (mesh) => {
-					mesh.receiveShadows = true;
-					this.shadowGen.addShadowCaster(mesh);
-				},
-			},
+			3,
+			performance.now.bind(performance),
+			this.generation,
+			this.CHUNK_DISPLAY_RADIUS,
 		);
 		this.chunkManager.update(BABYLON.Vector3.Zero());
+		this.radialLighting = new RadialLightingPostProcess(this.scene, {
+			innerRadius: this.ZONE_RADIUS * 0.45,
+			outerRadius: this.ZONE_RADIUS,
+			// The first cylinder is the hard visibility boundary. The radial
+			// curve must reach full opacity exactly at its radius.
+			penumbra: 0,
+			lightColor: beamColor,
+		});
 
 		this.sunRay = new SunRayVolumetric(this.scene, {
 			color: beamColor,
@@ -94,71 +108,22 @@ export class MapGenerator {
 			new BABYLON.FxaaPostProcess('fxaa', 1.0, this.scene.activeCamera);
 		}
 
-		this.createZoneBoundary(strikeY);
-
 		this.scene.blockMaterialDirtyMechanism = true;
 	}
 
-	private createZoneBoundary(baseY: number) {
-		const wall = BABYLON.MeshBuilder.CreateCylinder(
-			'zoneBoundary',
-			{
-				diameter: this.ZONE_RADIUS * 2,
-				height: 140,
-				tessellation: 96,
-				cap: BABYLON.Mesh.NO_CAP,
-			},
-			this.scene,
-		);
-
-		const grad = new BABYLON.DynamicTexture(
-			'zoneBoundaryGrad',
-			{ width: 4, height: 128 },
-			this.scene,
-			false,
-		);
-		const ctx = grad.getContext() as unknown as CanvasRenderingContext2D;
-		const g = ctx.createLinearGradient(0, 128, 0, 0);
-		g.addColorStop(0, 'rgba(255,255,255,0.85)');
-		g.addColorStop(1, 'rgba(255,255,255,0)');
-		ctx.fillStyle = g;
-		ctx.fillRect(0, 0, 4, 128);
-		grad.update();
-		grad.hasAlpha = true;
-
-		const mat = new BABYLON.StandardMaterial('zoneBoundaryMat', this.scene);
-		mat.disableLighting = true;
-		mat.emissiveColor = new BABYLON.Color3(1.0, 0.55, 0.25);
-		mat.diffuseColor = new BABYLON.Color3(0, 0, 0);
-		mat.opacityTexture = grad;
-		mat.backFaceCulling = false;
-		mat.alphaMode = BABYLON.Constants.ALPHA_ADD;
-		wall.material = mat;
-
-		wall.isPickable = false;
-		wall.receiveShadows = false;
-		wall.doNotSyncBoundingInfo = true;
-		wall.alwaysSelectAsActiveMesh = true;
-		wall.position.set(0, baseY, 0);
-		this.zoneBoundary = wall;
-	}
-
 	syncFromRoom(rayX: number, rayY: number, rayZ: number) {
-		this.rayPos.set(rayX, rayY, rayZ);
-		this.sunRay.setStrike(rayX, rayY, rayZ);
-		this.rayLight.position.set(rayX, rayY + this.BEAM_LIGHT_H, rayZ);
-		this.zoneBoundary.position.set(rayX, rayY, rayZ);
+		if (
+			!this.raySynchronized ||
+			rayX !== this.rayPos.x ||
+			rayY !== this.rayPos.y ||
+			rayZ !== this.rayPos.z
+		) {
+			this.raySynchronized = true;
+			this.rayPos.set(rayX, rayY, rayZ);
+			this.sunRay.setStrike(rayX, rayY, rayZ);
+			this.radialLighting.setRayPosition(rayX, rayY, rayZ);
+		}
 		this.chunkManager.update(this.rayPos);
-	}
-
-	clampToZone(x: number, z: number): { x: number; z: number } {
-		const ox = x - this.rayPos.x;
-		const oz = z - this.rayPos.z;
-		const distSq = ox * ox + oz * oz;
-		if (distSq <= this.ZONE_RADIUS * this.ZONE_RADIUS) return { x, z };
-		const dist = Math.sqrt(distSq);
-		const scale = this.ZONE_RADIUS / dist;
-		return { x: this.rayPos.x + ox * scale, z: this.rayPos.z + oz * scale };
 	}
 
 	updateAuras(auras: readonly AuraInstance[], dtSeconds: number) {
@@ -173,15 +138,36 @@ export class MapGenerator {
 		return this.world;
 	}
 
-	addShadowCaster(mesh: BABYLON.AbstractMesh) {
-		this.shadowGen.addShadowCaster(mesh);
+	/** Center shared by the access cylinder and chunk visibility distance. */
+	getZoneCenter(): BABYLON.Vector3 {
+		return this.rayPos;
+	}
+
+	getGenerationClient(): WorldGenerationClient {
+		return this.generation;
+	}
+
+	prepareRenderable(root: BABYLON.TransformNode, includeRoot = true) {
+		const children = root.getChildMeshes();
+		const first =
+			includeRoot && root instanceof BABYLON.AbstractMesh ? -1 : 0;
+		for (let index = first; index < children.length; index++) {
+			const child =
+				index < 0 ? (root as BABYLON.AbstractMesh) : children[index];
+			const material = child.material;
+			if (material instanceof BABYLON.StandardMaterial)
+				material.disableLighting = true;
+			if (material instanceof BABYLON.PBRMaterial) material.unlit = true;
+		}
 	}
 
 	dispose() {
-		this.shadowGen.dispose();
-		this.rayLight.dispose();
+		this.chunkManager.dispose();
+		this.generation.dispose();
+		this.radialLighting.dispose();
+		this.sunRay.dispose();
+		this.terrainLight.dispose();
+		this.terrainTexture.dispose();
 		this.terrainMaterial.dispose();
-		this.zoneBoundary.material?.dispose();
-		this.zoneBoundary.dispose();
 	}
 }

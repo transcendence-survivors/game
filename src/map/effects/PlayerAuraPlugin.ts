@@ -1,37 +1,20 @@
 import * as BABYLON from '@babylonjs/core';
+import { COMBAT_LIMITS, type Vec2d } from '@transcendence/game-shared';
 
-/** Nombre max d'auras rendues simultanément (= joueurs max dans une room). */
-export const MAX_AURAS = 4;
+export const MAX_AURAS = COMBAT_LIMITS.maxPlayers;
 
-/** Une aura à afficher : centre monde (x, z), portée et cadence d'attaque. */
-export interface AuraInstance {
-	x: number;
-	z: number;
+export interface AuraInstance extends Vec2d {
 	radius: number;
 	attackSpeed: number;
 }
 
-/**
- * Plugin de matériau qui dessine les auras des joueurs directement sur le
- * terrain. Comme la contribution est calculée par pixel à partir de la
- * position monde (`vPositionW`), l'aura épouse parfaitement le relief à paliers
- * (falaises, pentes) sans z-fighting, contrairement à un sprite plaqué au sol.
- *
- * Le rendu est purement cosmétique : la portée et les dégâts font autorité
- * côté serveur. On ne partage ici que la géométrie (centre + rayon) et la
- * cadence, pour animer une onde de choc synchronisée sur chaque attaque.
- *
- * Scalable : une seule injection couvre tout le terrain et gère jusqu'à
- * MAX_AURAS joueurs via un tableau d'uniforms, sans créer le moindre mesh.
- */
+// Injection cosmétique par pixel, sans mesh ni z-fighting sur le relief.
 export class PlayerAuraPlugin extends BABYLON.MaterialPluginBase {
 	private _enabled = true;
-	// vec4 par aura : (centreX, centreZ, rayon, attackSpeed).
 	private readonly _auraData = new Float32Array(MAX_AURAS * 4);
 	private _count = 0;
 	private _time = 0;
 
-	/** Teinte du champ (glow additif). Modifiable à chaud. */
 	color = new BABYLON.Color3(0.35, 0.85, 1.0);
 
 	constructor(material: BABYLON.Material) {
@@ -49,9 +32,9 @@ export class PlayerAuraPlugin extends BABYLON.MaterialPluginBase {
 		this._enable(value);
 	}
 
-	/** Remplace l'ensemble des auras et avance l'horloge d'animation. */
 	update(auras: readonly AuraInstance[], dtSeconds: number): void {
-		if (Number.isFinite(dtSeconds) && dtSeconds > 0) this._time += dtSeconds;
+		if (Number.isFinite(dtSeconds) && dtSeconds > 0)
+			this._time += dtSeconds;
 		const n = Math.min(auras.length, MAX_AURAS);
 		for (let i = 0; i < n; i++) {
 			const a = auras[i];
@@ -75,7 +58,12 @@ export class PlayerAuraPlugin extends BABYLON.MaterialPluginBase {
 	getUniforms() {
 		return {
 			ubo: [
-				{ name: 'auraData', size: 4, type: 'vec4', arraySize: MAX_AURAS },
+				{
+					name: 'auraData',
+					size: 4,
+					type: 'vec4',
+					arraySize: MAX_AURAS,
+				},
 				{ name: 'auraColor', size: 3, type: 'vec3' },
 				{ name: 'auraParams', size: 4, type: 'vec4' },
 			],
@@ -91,18 +79,11 @@ uniform vec4 auraParams;
 		if (!this._enabled) return;
 		uniformBuffer.updateFloatArray('auraData', this._auraData);
 		uniformBuffer.updateColor3('auraColor', this.color);
-		uniformBuffer.updateFloat4(
-			'auraParams',
-			this._count,
-			this._time,
-			0,
-			0,
-		);
+		uniformBuffer.updateFloat4('auraParams', this._count, this._time, 0, 0);
 	}
 
 	getCustomCode(shaderType: string) {
 		if (shaderType !== 'fragment') return null;
-		// auraParams.x = nombre d'auras actives, auraParams.y = temps (s).
 		return {
 			CUSTOM_FRAGMENT_MAIN_END: `
 			#ifdef PLAYER_AURA

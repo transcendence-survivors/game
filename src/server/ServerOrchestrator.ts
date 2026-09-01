@@ -3,64 +3,184 @@ import * as COLYSEUS from '@colyseus/sdk';
 import { MapGenerator } from '../map/MapGenerator';
 import type { AuraInstance } from '../map/effects/PlayerAuraPlugin';
 import {
-	applyHorizontalMovement,
-	applyVerticalMovement,
-	resolveTerrainCollision,
+	simulatePlayerMovement,
 	type GameState,
 	type MoveInput,
 	type MovementState,
-} from '../../../shared-package/src';
+	type MovementBoundary,
+	type Player,
+	ClientMessage,
+	ServerMessage,
+	type WorldSeedMessage,
+	type Vec3d,
+	PLAYER_ACCESS_RADIUS,
+	createMoveInput,
+	createMovementState,
+} from '@transcendence/game-shared';
 
-import { models } from '../assets/models';
-import { SceneManager } from '../scenes/SceneManager';
-import { groundHeightUnderHitbox } from '../../../shared-package/src/gameplay/Collisions';
+import type { ModelAssetLibrary } from './assets/ModelAssetLibrary';
+import {
+	createPlayerAnimationController,
+	type PlayerAnimationController,
+} from './assets/PlayerAnimation';
+import { models } from './assets/models';
+import { SceneManager } from './SceneManager';
+import { CombatRenderer } from './combat/CombatRenderer';
+import { CombatAssetLibrary } from './combat/CombatAssetLibrary';
+import { WeaponAttachmentRenderer } from './combat/WeaponAttachmentRenderer';
+import { AsyncViewRegistry } from './combat/AsyncViewRegistry';
+import { CleanupBag, CleanupRegistry } from './CleanupBag';
+
+class RemotePlayerView {
+	readonly mesh: BABYLON.AbstractMesh;
+	readonly animations: PlayerAnimationController;
+	private moving: boolean | null = null;
+
+	constructor(
+		mesh: BABYLON.AbstractMesh,
+		animations: PlayerAnimationController,
+	) {
+		this.mesh = mesh;
+		this.animations = animations;
+	}
+
+	setMoving(moving: boolean): void {
+		if (this.moving === moving) return;
+		this.moving = moving;
+		if (moving) this.animations.playWalk();
+		else {
+			this.animations.playIdle();
+			this.mesh.rotation.z = 0;
+		}
+	}
+
+	dispose(): void {
+		this.animations.dispose();
+		this.mesh.dispose();
+	}
+}
+
+type AuthoritativeMovementState = Pick<
+	Player,
+	| 'x'
+	| 'y'
+	| 'z'
+	| 'rotationY'
+	| 'velocityY'
+	| 'isGrounded'
+	| 'lastProcessedSeq'
+>;
+
+interface ReconciliationSnapshot extends AuthoritativeMovementState {
+	moveSpeed: number;
+	pendingInputHead: number;
+	pendingInputLength: number;
+	pendingInputLastSeq: number | null;
+}
+
+type RemoteTarget = Vec3d & { rotationY: number };
+
+function isAuthoritativeMovementState(
+	state: Partial<AuthoritativeMovementState>,
+): state is AuthoritativeMovementState {
+	return (
+		typeof state.x === 'number' &&
+		typeof state.y === 'number' &&
+		typeof state.z === 'number' &&
+		typeof state.rotationY === 'number' &&
+		typeof state.velocityY === 'number' &&
+		typeof state.isGrounded === 'boolean' &&
+		typeof state.lastProcessedSeq === 'number'
+	);
+}
 
 export class ServerOrchestrator {
-	private scene!: BABYLON.Scene;
-	private remoteTargets: Map<
-		string,
-		{ x: number; z: number; y: number; rotationY: number }
-	> = new Map();
-	private remotePlayers: Map<string, BABYLON.AbstractMesh> = new Map();
-	private remotePlayerAnims: Map<string, BABYLON.AnimationGroup> = new Map();
+	private readonly scene: BABYLON.Scene;
+	private readonly remoteTargets = new Map<string, RemoteTarget>();
+	private readonly remotePlayers = new AsyncViewRegistry<RemotePlayerView>();
 	private mapGen!: MapGenerator;
-	private room!: COLYSEUS.Room<GameState>;
+	private readonly room: COLYSEUS.Room<GameState>;
 	private player!: BABYLON.AbstractMesh;
-	private pendingInputs: MoveInput[] = [];
-	private movementState: MovementState = {
+	private combatRenderer!: CombatRenderer;
+	private weaponAttachments!: WeaponAttachmentRenderer;
+	private combatAssets!: CombatAssetLibrary;
+	private readonly pendingInputs: MoveInput[] = [];
+	private readonly recycledInputs: MoveInput[] = [];
+	private pendingInputHead = 0;
+	private readonly unsentPredictionInput = createMoveInput();
+	private readonly playerAssets: ModelAssetLibrary;
+	private combatHitboxesVisible = false;
+	private readonly auras: AuraInstance[] = [];
+	private readonly subscriptions = new CleanupBag();
+	private readonly playerSubscriptions = new CleanupRegistry<string>();
+	private gameOverHandled = false;
+	private movementState: MovementState = createMovementState();
+	private readonly reconciliationState = createMovementState();
+	private readonly movementBoundary: MovementBoundary = {
+		centerX: 0,
+		centerZ: 0,
+		radius: PLAYER_ACCESS_RADIUS,
+	};
+	private readonly lastReconciliation: ReconciliationSnapshot = {
 		x: 0,
 		y: 0,
 		z: 0,
 		rotationY: 0,
 		velocityY: 0,
 		isGrounded: true,
+		lastProcessedSeq: 0,
+		moveSpeed: 0,
+		pendingInputHead: 0,
+		pendingInputLength: 0,
+		pendingInputLastSeq: null,
 	};
-	private seed!: number;
+	private hasLastReconciliation = false;
 
 	constructor(
 		scene: BABYLON.Scene,
 		room: COLYSEUS.Room<GameState>,
-		seed: number,
+		playerAssets: ModelAssetLibrary,
 	) {
 		this.scene = scene;
 		this.room = room;
-		this.seed = seed;
-	}
-
-	async init() {
-		this.mapGen = new MapGenerator(this.scene, this.seed);
-		this.room.onMessage('gameOver', () => {
-			document.exitPointerLock();
-			SceneManager.toEndScreen(this.room);
-		});
+		this.playerAssets = playerAssets;
 	}
 
 	setPlayer(player: BABYLON.AbstractMesh) {
 		this.player = player;
+		this.hasLastReconciliation = false;
+		this.weaponAttachments.attachToPlayer(this.room.sessionId);
 	}
 
-	pushPendingInput(input: MoveInput) {
-		this.pendingInputs.push(input);
+	sendMovementInput(input: MoveInput): void {
+		const pending = this.recycledInputs.pop() ?? { ...input };
+		Object.assign(pending, input);
+		this.pendingInputs.push(pending);
+		this.room.send(ClientMessage.Move, pending);
+	}
+
+	setUnsentPrediction(input: MoveInput, deltaTime: number) {
+		const pending = this.unsentPredictionInput;
+		pending.forward = input.forward;
+		pending.backward = input.backward;
+		pending.right = input.right;
+		pending.left = input.left;
+		pending.jump = false;
+		pending.deltaTime = deltaTime;
+		pending.cameraYaw = input.cameraYaw;
+	}
+
+	setCombatHitboxesVisible(visible: boolean) {
+		this.combatHitboxesVisible = visible;
+		this.combatRenderer?.setHitboxesVisible(visible);
+	}
+
+	setDebugImmortal(enabled: boolean) {
+		this.room.send(ClientMessage.SetDebugImmortal, { enabled });
+	}
+
+	setMonsterStressTest(enabled: boolean) {
+		this.room.send(ClientMessage.SetDebugMonsterStress, { enabled });
 	}
 
 	getMovementState() {
@@ -71,50 +191,101 @@ export class ServerOrchestrator {
 		this.movementState = state;
 	}
 
-	send(message: string, input: MoveInput) {
-		this.room.send(message, input);
-	}
-
-	async addRemotePlayer(sessionId: string) {
-		const result = await BABYLON.ImportMeshAsync(models.player, this.scene);
-		const model = result.meshes[0];
-		model.rotationQuaternion = null;
-		this.remotePlayers.set(sessionId, model);
-		result.animationGroups[0].stop();
-		this.remotePlayerAnims.set(sessionId, result.animationGroups[0]);
-		this.mapGen.addShadowCaster(model);
-		return model;
+	private async addRemotePlayer(sessionId: string) {
+		await this.remotePlayers.add(sessionId, async () => {
+			const result = await this.playerAssets.instantiate(
+				models.player,
+				`remotePlayer:${sessionId}`,
+			);
+			const model = result.root;
+			model.rotationQuaternion = null;
+			const animations = createPlayerAnimationController(
+				model,
+				result.animationGroups,
+			);
+			animations.playIdle();
+			this.mapGen.prepareRenderable(model);
+			return new RemotePlayerView(model, animations);
+		});
+		const view = this.remotePlayers.get(sessionId);
+		if (!view) return null;
+		this.weaponAttachments.attachToPlayer(sessionId);
+		return view;
 	}
 
 	updateRemotePlayers(deltaTime: number) {
 		const lerpFactor = Math.min(1, deltaTime * 10);
-		for (const [sessionId, mesh] of this.remotePlayers) {
+		this.remotePlayers.forEach(({ mesh }, sessionId) => {
 			const target = this.remoteTargets.get(sessionId);
-			if (!target) continue;
-			const targetPos = new BABYLON.Vector3(target.x, target.y, target.z);
-			const newPos = BABYLON.Vector3.Lerp(
-				mesh.position,
-				targetPos,
+			if (!target) return;
+			mesh.position.x = BABYLON.Scalar.Lerp(
+				mesh.position.x,
+				target.x,
 				lerpFactor,
 			);
-			mesh.position.copyFrom(newPos);
+			mesh.position.y = BABYLON.Scalar.Lerp(
+				mesh.position.y,
+				target.y,
+				lerpFactor,
+			);
+			mesh.position.z = BABYLON.Scalar.Lerp(
+				mesh.position.z,
+				target.z,
+				lerpFactor,
+			);
 			const targetRotation = target.rotationY + Math.PI;
 			mesh.rotation.y = BABYLON.Scalar.LerpAngle(
 				mesh.rotation.y,
 				targetRotation,
 				lerpFactor,
 			);
-		}
+		});
 	}
 
-	removeRemotePlayer(sessionId: string) {
-		const mesh = this.remotePlayers.get(sessionId);
-		if (mesh) {
-			mesh.dispose();
-			this.remotePlayers.delete(sessionId);
-		}
+	private removeRemotePlayer(sessionId: string) {
+		this.weaponAttachments.removePlayer(sessionId);
+		this.remotePlayers.remove(sessionId);
 		this.remoteTargets.delete(sessionId);
-		this.remotePlayerAnims.delete(sessionId);
+	}
+
+	async connect() {
+		await new Promise<void>((resolve) => {
+			let unsubscribe: (() => void) | undefined;
+			unsubscribe = this.room.onMessage(
+				ServerMessage.WorldSeed,
+				({ seed }: WorldSeedMessage) => {
+					unsubscribe?.();
+					this.mapGen = new MapGenerator(this.scene, seed);
+					this.combatAssets = new CombatAssetLibrary(
+						this.scene,
+						this.mapGen,
+					);
+					this.weaponAttachments = new WeaponAttachmentRenderer(
+						this.combatAssets,
+					);
+					this.combatRenderer = new CombatRenderer(
+						this.scene,
+						this.room,
+						this.combatAssets,
+						this.weaponAttachments,
+					);
+					this.combatRenderer.listen();
+					this.combatRenderer.setHitboxesVisible(
+						this.combatHitboxesVisible,
+					);
+					resolve();
+				},
+			);
+			this.subscriptions.add(unsubscribe);
+		});
+		this.subscriptions.add(
+			this.room.onMessage(ServerMessage.GameOver, () => {
+				if (this.gameOverHandled) return;
+				this.gameOverHandled = true;
+				document.exitPointerLock();
+				SceneManager.toLobby();
+			}),
+		);
 	}
 
 	getMapGen() {
@@ -126,9 +297,12 @@ export class ServerOrchestrator {
 	}
 
 	collectAuras(): AuraInstance[] {
-		const out: AuraInstance[] = [];
+		let count = 0;
 		const players = this.room.state?.players;
-		if (!players) return out;
+		if (!players) {
+			this.auras.length = 0;
+			return this.auras;
+		}
 		players.forEach((player, sessionId) => {
 			const aura = player.aura;
 			if (!aura || aura.radius <= 0) return;
@@ -140,23 +314,31 @@ export class ServerOrchestrator {
 					z = this.player.position.z;
 				}
 			} else {
-				const mesh = this.remotePlayers.get(sessionId);
-				if (mesh) {
-					x = mesh.position.x;
-					z = mesh.position.z;
+				const view = this.remotePlayers.get(sessionId);
+				if (view) {
+					x = view.mesh.position.x;
+					z = view.mesh.position.z;
 				}
 			}
-			out.push({
-				x,
-				z,
-				radius: aura.radius,
-				attackSpeed: aura.attackSpeed,
-			});
+			const output = this.auras[count++];
+			if (output) {
+				output.x = x;
+				output.z = z;
+				output.radius = aura.radius;
+				output.attackSpeed = aura.attackSpeed;
+			} else
+				this.auras.push({
+					x,
+					z,
+					radius: aura.radius,
+					attackSpeed: aura.attackSpeed,
+				});
 		});
-		return out;
+		this.auras.length = count;
+		return this.auras;
 	}
 
-	getLocalSpawn(): { x: number; y: number; z: number } | null {
+	getLocalSpawn(): Vec3d | null {
 		const player = this.room.state?.players?.get(this.room.sessionId);
 		if (
 			!player ||
@@ -168,128 +350,224 @@ export class ServerOrchestrator {
 		return { x: player.x, y: player.y, z: player.z };
 	}
 
-	reconcile(serverState: {
-		x?: number;
-		z?: number;
-		y?: number;
-		rotationY?: number;
-		velocityY?: number;
-		isGrounded?: boolean;
-		lastProcessedSeq?: number;
-	}) {
-		if (!this.player) return;
-		if (
-			typeof serverState.x !== 'number' ||
-			typeof serverState.y !== 'number' ||
-			typeof serverState.z !== 'number' ||
-			typeof serverState.rotationY !== 'number' ||
-			typeof serverState.velocityY !== 'number' ||
-			typeof serverState.isGrounded !== 'boolean' ||
-			typeof serverState.lastProcessedSeq !== 'number'
-		)
+	private reconcile(serverState: Partial<AuthoritativeMovementState>) {
+		if (!this.player || !isAuthoritativeMovementState(serverState)) return;
+		const authoritativeState = serverState;
+		const player = this.room.state.players.get(this.room.sessionId);
+		if (!player) return;
+		const moveSpeed = player.stats.moveSpeed;
+		if (this.isDuplicateReconciliation(authoritativeState, moveSpeed))
 			return;
-		this.pendingInputs = this.pendingInputs.filter(
-			(input) => input.seq > serverState.lastProcessedSeq!,
-		);
+		let acknowledged = this.pendingInputHead;
+		while (
+			this.pendingInputs[acknowledged]?.seq <=
+			authoritativeState.lastProcessedSeq
+		)
+			acknowledged++;
+		this.discardAcknowledgedInputs(acknowledged);
 
-		let state: MovementState = {
-			x: serverState.x,
-			y: serverState.y,
-			z: serverState.z,
-			rotationY: serverState.rotationY,
-			velocityY: serverState.velocityY,
-			isGrounded: serverState.isGrounded,
-		};
+		const state = this.reconciliationState;
+		state.x = authoritativeState.x;
+		state.y = authoritativeState.y;
+		state.z = authoritativeState.z;
+		state.rotationY = authoritativeState.rotationY;
+		state.velocityY = authoritativeState.velocityY;
+		state.isGrounded = authoritativeState.isGrounded;
 
 		const world = this.mapGen.getWorld();
+		this.movementBoundary.centerX = this.room.state.rayX;
+		this.movementBoundary.centerZ = this.room.state.rayZ;
 
-		for (const input of this.pendingInputs) {
-			const player = this.room.state.players.get(this.room.sessionId);
-			if (!player) return;
-			const horizontalMove = applyHorizontalMovement(
+		for (
+			let index = this.pendingInputHead;
+			index < this.pendingInputs.length;
+			index++
+		) {
+			const input = this.pendingInputs[index];
+			simulatePlayerMovement(
+				world,
 				state,
 				input,
-				input.cameraYaw,
 				player.stats.moveSpeed,
+				state,
+				this.movementBoundary,
 			);
-			const resolved = resolveTerrainCollision(
+		}
+		if (this.unsentPredictionInput.deltaTime > 0)
+			simulatePlayerMovement(
 				world,
 				state,
-				horizontalMove,
-				state.y,
+				this.unsentPredictionInput,
+				player.stats.moveSpeed,
+				state,
+				this.movementBoundary,
 			);
-			const groundHeight = groundHeightUnderHitbox(
-				world,
-				resolved.x,
-				resolved.z,
-			);
-			const verticalMove = applyVerticalMovement(
-				state.y,
-				state.velocityY,
-				state.isGrounded,
-				groundHeight,
-				input,
-			);
-			state = {
-				x: resolved.x,
-				z: resolved.z,
-				y: verticalMove.y,
-				rotationY: horizontalMove.rotationY,
-				velocityY: verticalMove.velocityY,
-				isGrounded: verticalMove.isGrounded,
-			};
-		}
 		this.movementState = state;
 		this.player.position.x = state.x;
 		this.player.position.y = state.y;
 		this.player.position.z = state.z;
 		this.player.rotation.y = state.rotationY;
+		const snapshot = this.lastReconciliation;
+		snapshot.x = authoritativeState.x;
+		snapshot.y = authoritativeState.y;
+		snapshot.z = authoritativeState.z;
+		snapshot.rotationY = authoritativeState.rotationY;
+		snapshot.velocityY = authoritativeState.velocityY;
+		snapshot.isGrounded = authoritativeState.isGrounded;
+		snapshot.lastProcessedSeq = authoritativeState.lastProcessedSeq;
+		snapshot.moveSpeed = moveSpeed;
+		snapshot.pendingInputHead = this.pendingInputHead;
+		snapshot.pendingInputLength = this.pendingInputs.length;
+		snapshot.pendingInputLastSeq =
+			this.pendingInputs[this.pendingInputs.length - 1]?.seq ?? null;
+		this.hasLastReconciliation = true;
+	}
+
+	private isDuplicateReconciliation(
+		serverState: AuthoritativeMovementState,
+		moveSpeed: number,
+	): boolean {
+		if (!this.hasLastReconciliation) return false;
+		const previous = this.lastReconciliation;
+		return (
+			Object.is(previous.x, serverState.x) &&
+			Object.is(previous.y, serverState.y) &&
+			Object.is(previous.z, serverState.z) &&
+			Object.is(previous.rotationY, serverState.rotationY) &&
+			Object.is(previous.velocityY, serverState.velocityY) &&
+			previous.isGrounded === serverState.isGrounded &&
+			Object.is(
+				previous.lastProcessedSeq,
+				serverState.lastProcessedSeq,
+			) &&
+			Object.is(previous.moveSpeed, moveSpeed) &&
+			previous.pendingInputHead === this.pendingInputHead &&
+			previous.pendingInputLength === this.pendingInputs.length &&
+			previous.pendingInputLastSeq ===
+				(this.pendingInputs[this.pendingInputs.length - 1]?.seq ?? null)
+		);
 	}
 
 	listenToState() {
 		const callbacks = COLYSEUS.Callbacks.get(this.room);
-		callbacks.onAdd('players', async (player, sessionId) => {
-			if (sessionId === this.room.sessionId) {
-				if (!this.player) return;
-				this.reconcile(player);
-				callbacks.onChange(player, () => {
+		this.subscriptions.add(
+			callbacks.onAdd('players', async (player, sessionId) => {
+				const subscriptions =
+					this.playerSubscriptions.replace(sessionId);
+				if (sessionId === this.room.sessionId) {
 					if (!this.player) return;
+					this.listenToWeapons(
+						callbacks,
+						player,
+						sessionId,
+						() => this.player,
+						subscriptions,
+					);
 					this.reconcile(player);
-				});
-			} else {
-				const mesh = await this.addRemotePlayer(sessionId);
-				this.remoteTargets.set(sessionId, {
-					x: player.x,
-					rotationY: player.rotationY,
-					z: player.z,
-					y: player.y,
-				});
-				mesh.position.x = player.x;
-				mesh.position.z = player.z;
-				mesh.position.y = this.mapGen.getGroundHeight(
-					player.x,
-					player.z,
-				);
-				mesh.rotation.y = player.rotationY + Math.PI;
-				callbacks.onChange(player, () => {
-					this.remoteTargets.set(sessionId, {
-						x: player.x,
-						z: player.z,
-						rotationY: player.rotationY,
-						y: player.y,
-					});
-					const anim = this.remotePlayerAnims.get(sessionId);
-					if (anim) {
-						if (player.animState === 'moving') anim.play(true);
-						else anim.stop();
-					}
-				});
-			}
-		});
-		callbacks.onRemove('players', (player, sessionId) => {
-			if (sessionId !== this.room.sessionId) {
-				this.removeRemotePlayer(sessionId);
-			}
-		});
+					subscriptions.add(
+						callbacks.onChange(player, () =>
+							this.reconcile(player),
+						),
+					);
+				} else {
+					const view = await this.addRemotePlayer(sessionId);
+					if (
+						!view ||
+						!this.playerSubscriptions.isCurrent(
+							sessionId,
+							subscriptions,
+						)
+					)
+						return;
+					const mesh = view.mesh;
+					this.listenToWeapons(
+						callbacks,
+						player,
+						sessionId,
+						() => mesh,
+						subscriptions,
+					);
+					this.setRemoteTarget(sessionId, player);
+					mesh.position.x = player.x;
+					mesh.position.z = player.z;
+					mesh.position.y = this.mapGen.getGroundHeight(
+						player.x,
+						player.z,
+					);
+					mesh.rotation.y = player.rotationY + Math.PI;
+					view.setMoving(player.animState === 'moving');
+					subscriptions.add(
+						callbacks.onChange(player, () => {
+							this.setRemoteTarget(sessionId, player);
+							view.setMoving(player.animState === 'moving');
+						}),
+					);
+				}
+			}),
+		);
+		this.subscriptions.add(
+			callbacks.onRemove('players', (_player, sessionId) => {
+				this.playerSubscriptions.delete(sessionId);
+				if (sessionId !== this.room.sessionId)
+					this.removeRemotePlayer(sessionId);
+			}),
+		);
+	}
+
+	private listenToWeapons(
+		callbacks: ReturnType<typeof COLYSEUS.Callbacks.get<GameState>>,
+		player: Player,
+		sessionId: string,
+		getMesh: () => BABYLON.AbstractMesh,
+		subscriptions: CleanupBag,
+	): void {
+		subscriptions.add(
+			callbacks.onAdd(player, 'weapons', (weapon) =>
+				this.weaponAttachments.attachWeapon(
+					sessionId,
+					getMesh(),
+					weapon.kind,
+				),
+			),
+		);
+	}
+
+	private setRemoteTarget(sessionId: string, player: Player): void {
+		const { x, y, z, rotationY } = player;
+		const target = this.remoteTargets.get(sessionId);
+		if (target) {
+			target.x = x;
+			target.y = y;
+			target.z = z;
+			target.rotationY = rotationY;
+		} else this.remoteTargets.set(sessionId, { x, y, z, rotationY });
+	}
+
+	private discardAcknowledgedInputs(head: number): void {
+		for (let index = this.pendingInputHead; index < head; index++)
+			this.recycledInputs.push(this.pendingInputs[index]);
+		if (head === this.pendingInputs.length) {
+			this.pendingInputs.length = 0;
+			this.pendingInputHead = 0;
+		} else if (head >= 64 && head * 2 >= this.pendingInputs.length) {
+			this.pendingInputs.copyWithin(0, head);
+			this.pendingInputs.length -= head;
+			this.pendingInputHead = 0;
+		} else this.pendingInputHead = head;
+	}
+
+	dispose() {
+		this.subscriptions.dispose();
+		this.playerSubscriptions.dispose();
+		this.combatRenderer?.dispose();
+		this.weaponAttachments?.dispose();
+		this.combatAssets?.dispose();
+		this.remotePlayers.dispose();
+		this.remoteTargets.clear();
+		this.pendingInputs.length = 0;
+		this.recycledInputs.length = 0;
+		this.pendingInputHead = 0;
+		this.unsentPredictionInput.deltaTime = 0;
+		this.hasLastReconciliation = false;
 	}
 }

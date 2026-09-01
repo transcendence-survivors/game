@@ -2,7 +2,7 @@ import type { Engine, Scene } from '@babylonjs/core';
 import * as BABYLON from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import { SceneManager } from './SceneManager';
-import { guiImports } from '../assets/ui';
+import { createFullscreenUi, getGuiControl, guiImports } from '../assets/ui';
 
 export class MainMenuScene {
 	private engine: Engine;
@@ -27,23 +27,12 @@ export class MainMenuScene {
 		this.ready = this.show();
 	}
 
-	getScene() {
-		return this.scene;
-	}
-
-	async render() {
+	render() {
 		this.scene.render();
 	}
 
 	async show() {
-		this.advTex = GUI.AdvancedDynamicTexture.CreateFullscreenUI(
-			'MainMenuUi',
-			true,
-			this.scene,
-		);
-		this.advTex.idealWidth = 1920;
-		this.advTex.idealHeight = 1080;
-		this.advTex.renderAtIdealSize = true;
+		this.advTex = createFullscreenUi('MainMenuUi', this.scene);
 		await this.advTex.parseFromURLAsync(guiImports.main);
 		this.linkControls();
 	}
@@ -54,15 +43,7 @@ export class MainMenuScene {
 	}
 
 	private linkControls() {
-		const playButton = this.advTex.getControlByName(
-			'PlayButton',
-		) as GUI.Button;
-		if (!playButton) {
-			console.error('Missing PlayButton from main_menu.json', {
-				playButton,
-			});
-			return;
-		}
+		const playButton = getGuiControl<GUI.Button>(this.advTex, 'PlayButton');
 		const idleBackground = '#E5A832';
 		const hoverBackground = '#D8982A';
 
@@ -74,7 +55,6 @@ export class MainMenuScene {
 		});
 
 		playButton.onPointerUpObservable.add(() => {
-			this.dispose();
 			SceneManager.toLobby();
 		});
 	}
