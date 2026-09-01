@@ -35,6 +35,7 @@ import {
 import { CleanupBag } from '../CleanupBag';
 import { NetworkInputCadence } from '../performance/NetworkInputCadence';
 import { LevelUpShaderEffect } from '../effects/LevelUpShaderEffect';
+import { createGameMusic } from '../audio/GameMusic';
 
 const CAMERA_NEAR = 0.1;
 const CAMERA_FAR = 600;
@@ -99,6 +100,7 @@ export class GameScene {
 	private async init(room: COLYSEUS.Room<GameState>) {
 		try {
 			this.scene = this.track(new BABYLON.Scene(this.engine));
+			const music = this.track(createGameMusic());
 			this.createCamera();
 
 			this.playerAssets = this.track(new ModelAssetLibrary(this.scene));
@@ -160,6 +162,7 @@ export class GameScene {
 
 			this.hud = this.track(new Hud(this.scene, room));
 			this.track(new LevelUpMenu(this.scene, room));
+			music.play();
 			this.renderLoop();
 		} catch (e) {
 			this.dispose();
