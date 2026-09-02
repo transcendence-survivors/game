@@ -15,23 +15,64 @@ interface StatDef {
 }
 
 const STAT_DEFS: StatDef[] = [
-	{ key: 'attackDamage', label: 'Damage', icon: iconsImport.damage },
+	{ key: 'attackDamage', label: 'Damage', icon: iconsImport.tomeDamage },
 	{
 		key: 'attackSpeed',
 		label: 'Attack Speed',
 		icon: iconsImport.attackSpeed,
 		format: (v) => `${v.toFixed(2)}/s`,
 	},
-	{ key: 'moveSpeed', label: 'Move Speed', icon: iconsImport.moveSpeed },
-	{ key: 'armor', label: 'Armor', icon: iconsImport.armor },
+	{ key: 'moveSpeed', label: 'Move Speed', icon: iconsImport.tomeAgility },
+	{
+		key: 'armor',
+		label: 'Armor',
+		icon: iconsImport.tomeArmor,
+		format: (v) => `${Math.round(v)}`,
+	},
 	{
 		key: 'lifesteal',
 		label: 'Lifesteal',
-		icon: iconsImport.lifesteal,
-		format: (v) => `${v}%`,
+		icon: iconsImport.tomeBlood,
+		format: (v) => `${v.toFixed(1)}%`,
 	},
-	{ key: 'range', label: 'Range', icon: iconsImport.range },
-	{ key: 'maxHealth', label: 'Max Health', icon: iconsImport.maxHealth },
+	{ key: 'range', label: 'Range', icon: iconsImport.tomeRange },
+	{ key: 'maxHealth', label: 'Max Health', icon: iconsImport.tomeVitality },
+	{
+		key: 'size',
+		label: 'Size',
+		icon: iconsImport.tomeSize,
+		format: (v) => `${(v * 100).toFixed(0)}%`,
+	},
+	{
+		key: 'duration',
+		label: 'Duration',
+		icon: iconsImport.tomeDuration,
+		format: (v) => `${(v * 100).toFixed(0)}%`,
+	},
+	{
+		key: 'quantity',
+		label: 'Quantity',
+		icon: iconsImport.tomeQuantity,
+		format: (v) => `+${Math.round(v)}`,
+	},
+	{
+		key: 'penetration',
+		label: 'Penetration',
+		icon: iconsImport.penetration,
+		format: (v) => `+${Math.round(v)}`,
+	},
+	{
+		key: 'luck',
+		label: 'Luck',
+		icon: iconsImport.tomeFortune,
+		format: (v) => `${v.toFixed(2)}x`,
+	},
+	{
+		key: 'killAmount',
+		label: 'Kills',
+		icon: iconsImport.kills,
+		format: (v) => `${Math.round(v)}`,
+	},
 ];
 
 export class EndingScreen {
@@ -84,11 +125,11 @@ export class EndingScreen {
 		STAT_DEFS.forEach((def, i) => {
 			const icon = this.advTex.getControlByName(
 				`Stat_${i + 1}_img`,
-			) as GUI.Image;
+			) as GUI.Image | null;
 
 			const text = this.advTex.getControlByName(
 				`Stat_${i + 1}_txt`,
-			) as GUI.TextBlock;
+			) as GUI.TextBlock | null;
 
 			if (!icon || !text) {
 				return;

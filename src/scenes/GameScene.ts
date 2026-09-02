@@ -165,6 +165,18 @@ export class GameScene {
 			);
 			await this.settings.ready;
 			this.settings.close();
+
+			const canvas = this.scene.getEngine().getRenderingCanvas();
+			canvas?.addEventListener('pointerdown', this.boundOnClick);
+			document.addEventListener('mousemove', this.boundOnMouseMove);
+			this.defer(() => {
+				canvas?.removeEventListener('pointerdown', this.boundOnClick);
+				document.removeEventListener(
+					'mousemove',
+					this.boundOnMouseMove,
+				);
+			});
+
 			music.play();
 			this.renderLoop();
 		} catch (e) {
@@ -202,14 +214,6 @@ export class GameScene {
 		this.camera.maxZ = CAMERA_FAR;
 		this.scene.activeCamera = this.camera;
 		this.camera.fov = 1.5;
-
-		const canvas = this.scene.getEngine().getRenderingCanvas();
-		canvas?.addEventListener('pointerdown', this.boundOnClick);
-		document.addEventListener('mousemove', this.boundOnMouseMove);
-		this.defer(() => {
-			canvas?.removeEventListener('pointerdown', this.boundOnClick);
-			document.removeEventListener('mousemove', this.boundOnMouseMove);
-		});
 	}
 
 	private clampCameraToTerrain(deltaTime: number) {

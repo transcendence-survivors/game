@@ -18,4 +18,13 @@ export const iconsImport = {
 	ppPh: new URL('./pp_placeholder.jpg', import.meta.url).href,
 	readyIndicator: new URL('./readyIndicator.svg', import.meta.url).href,
 	notReadyIndicator: new URL('./notReadyIndicator.svg', import.meta.url).href,
+	armor: new URL('./armorIcon.svg', import.meta.url).href,
+	moveSpeed: new URL('./bootIcon.svg', import.meta.url).href,
+	damage: new URL('./damageIcon.svg', import.meta.url).href,
+	attackSpeed: new URL('./attackSpeed.svg', import.meta.url).href,
+	lifesteal: new URL('./lifestealIcon.svg', import.meta.url).href,
+	maxHealth: new URL('./maxHealthIcon.svg', import.meta.url).href,
+	range: new URL('./rangeIcon.svg', import.meta.url).href,
+	kills: new URL('./kills.svg', import.meta.url).href,
+	penetration: new URL('./penetration.svg', import.meta.url).href,
 };
